@@ -1,0 +1,38 @@
+spring:
+  application:
+    name: english_app_cdcntt
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate.jdbc.time_zone: UTC
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: false
+
+app:
+  jwt:
+    secret: ${JWT_SECRET}
+    access-token-expiration: 30m
+    refresh-token-expiration: 7d
+  ai:
+    base-url: ${AI_BASE_URL}
+    api-key: ${AI_API_KEY}
+    model: ${AI_MODEL}
+    connect-timeout: 10s
+    read-timeout: 30s
+  cleanup:
+    enabled: true
+    cron: "0 0 3 * * *"
+    zone: UTC
+
+logging:
+  level:
+    com.example.english_app_cdcntt: INFO
+

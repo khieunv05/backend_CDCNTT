@@ -1,0 +1,29 @@
+# Test-only credentials. Never activate this profile in a deployed environment.
+# Import MySqlTestConfiguration in DB tests: it validates TEST_DB_* before connecting.
+# No Docker, no production DB_* fallback; database must be provisioned manually.
+app:
+  jwt:
+    secret: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+  ai:
+    base-url: https://api.example.test/v1
+    api-key: fake-test-api-key
+    model: test-model
+  cleanup:
+    enabled: false
+
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+    baseline-on-migrate: false
+    validate-on-migrate: true
+    clean-disabled: true
+    out-of-order: false
+
+# No AI client exists yet. When introduced, replace it with a mock/stub in tests;
+# this deliberately non-routable example endpoint is not a working AI service.
+logging:
+  level:
+    com.example.english_app_cdcntt: INFO
