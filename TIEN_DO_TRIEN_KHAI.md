@@ -186,7 +186,7 @@ Người dùng mở PowerShell tại thư mục dự án, export `TEST_DB_USERNA
 - `target/surefire-reports/*.xml` (11 lớp, ghi lúc 2026-09-29 20:46): **143 phần tử `<testcase>`, `failures=0`/`errors=0`/`skipped=0` ở mọi lớp** (cộng thuộc tính `tests` chỉ ra 139 vì `EntityBusinessRulesTest` ghi `tests="24"` ở header trong khi XML có đủ 28 testcase `@Nested` — artifact đã ghi ở Đợt 4).
 - `target/site/jacoco/jacoco.csv` cùng lần chạy: `service/AuthService` 31/31, `service.tx` 41/42 (= `RefreshTokenTxService` 31/31 + `RegistrationTxService` 7/8 + `RefreshRotationResult` 3/3) → 97,6%, vượt ngưỡng 80% của `jacoco:check` (goal gắn vào `verify`, build xanh nên check đã đạt).
 
-**Phase 2 chính thức đóng.** Lần chạy này đồng thời là lần nghiệm thu đầy đủ đầu tiên sau khi chuẩn hóa package (Đợt 6), tức 21 IT đã chạy trên layout package mới và mapping/schema không bị ảnh hưởng.
+**Phase 2 đóng về mặt chức năng**: 4 endpoint + rotation chạy đúng trên MySQL thật, 21 IT xanh trên layout package mới (Đợt 6). Tuy nhiên audit đối chiếu DoD §11 Phase 2 (2026-09-29) phát hiện thêm 4 hạng mục chưa đạt — 3 hạng mục đã bù ở **Đợt 8** (BCrypt cost 12, test cho filter/security chain, unit test BCrypt) và 1 hạng mục integration chuyển sang Phase 7.
 
 ## Đợt 6 — Chuẩn hóa package theo KE_HOACH §3 (ENUM, PACKAGE VÀ ENTITY)
 
@@ -265,17 +265,42 @@ Giữ nguyên cả ba trong `config/` (cụm JWT/security); **không** chuyển 
 - `service/` hiện mới có `AuthService`; `WordService`/`PhraseService`/`GradingService`/`TokenCleanupService`/`AiClient` thuộc Phase 3–6, khi thêm sẽ theo pattern: interface ở `service/`, impl ở `service/impl/`.
 - `controller/` hiện có `AuthController` và `GlobalErrorController`; `WordController`/`PhraseController` thuộc Phase 3/5.
 
+## Đợt 8 — Audit đối chiếu KE_HOACH và bù nợ DoD Phase 2 (2026-09-29)
+
+**Trạng thái: hoàn tất các hạng mục bù được trong phiên; còn 1 hạng mục integration chuyển Phase 7.**
+
+### Bối cảnh
+
+Đối chiếu toàn bộ KE_HOACH (§1, §2, §3, §4, §5, §9.2, §10, §11, §12, §14) với code và báo cáo test để xác nhận hướng đi trước khi sang Phase 3. Kết quả: cấu trúc §3 khớp sau Đợt 6–7; deps §10.1 và `application.yml` §10.2 khớp từng dòng; contract 4 endpoint §4.1 khớp status/message. Sai lệch tìm thấy nằm ở tầng test/cấu hình bảo mật như dưới.
+
+### Sai lệch đã sửa
+
+1. **BCrypt cost 10 thay vì 12** — §1.1 yêu cầu `BCryptPasswordEncoder(12)` (skill `spring-security-jwt` cũng vậy), nhưng [SecurityConfig.java](src/main/java/com/example/english_app_cdcntt/config/SecurityConfig.java) dùng constructor mặc định (cost 10). Đã sửa thành `new BCryptPasswordEncoder(12)`. Hash cũ vẫn verify được vì BCrypt ghi cost trong chính hash, không cần migrate dữ liệu.
+2. **Không có test nào cho filter/security chain** — DoD Phase 2 yêu cầu “MVC slice xác nhận JSON/status **và filter**”, §12 yêu cầu import security config/filter; trước đợt này `AuthControllerTest` là MockMvc standalone (không có filter). Thêm [AuthControllerSecurityTest.java](src/test/java/com/example/english_app_cdcntt/controller/AuthControllerSecurityTest.java): `@WebMvcTest` + `@Import(SecurityConfig.class, GlobalExceptionHandler.class)` + `@MockitoBean` cho `AuthService`, `JwtService`, `AppUserDetailsService`; 9 test phủ: 401 từ entry point khi thiếu token; permitAll vào được khi không token; token hỏng bị 401 **cả trên permitAll**; token hỏng trên route protected → 401; refresh token làm Bearer → 401; `uid` không khớp tài khoản → 401; tài khoản đã xoá → 401; token hợp lệ đi qua filter (route chưa map → 404, không phải 401); request ngoài `/api/**` → 403 từ access-denied handler.
+3. **Không có unit test BCrypt** — DoD yêu cầu “unit test BCrypt/JWT”. Thêm [SecurityConfigTest.java](src/test/java/com/example/english_app_cdcntt/config/SecurityConfigTest.java): hash phải có prefix `$2a$12$` và round-trip `matches` (đúng/sai mật khẩu).
+4. **Javadoc sai tham chiếu** — `TokenExpiredException` ghi `(§5.5)` trong khi kế hoạch chỉ có §5.1–5.3 → sửa thành `(§5.2:240)`; `GlobalExceptionHandlerTest` viện dẫn `SecurityErrorResponsesTest` không tồn tại → trỏ về `AuthControllerSecurityTest.denyAllRouteIsForbidden`.
+
+### Kết quả kiểm tra
+
+- `.\mvnw.cmd clean test` (JDK 24.0.2, compiler release 21): **BUILD SUCCESS — Tests run: 154, Failures: 0, Errors: 0, Skipped: 0** (trước đợt: 143; +11 test: `AuthControllerSecurityTest` 9, `SecurityConfigTest` 2).
+- `.\mvnw.cmd verify -DskipITs`: **BUILD SUCCESS**, `jacoco:check` báo `All coverage checks have been met.`
+- Chưa chạy IT trong phiên này (thiếu `TEST_DB_*`); các thay đổi không chạm entity/repository/migration.
+
+### Nợ DoD còn lại → chuyển Phase 7
+
+DoD §11 Phase 2 mục 3 yêu cầu integration test với DB thật: row refresh bị xoá **thật (đã commit)**, token mới khác token cũ **trong cùng một giây**, token cũ dùng lại thất bại, và **hai refresh đồng thời chỉ một thành công** — §5.2:243 ghi rõ “Test bằng transaction/kết nối độc lập, không chỉ mock repository”. Hiện chỉ có unit test mock (`RefreshTokenTxServiceTest` 11 test), chưa có IT. Cần MySQL local nên không chạy được trong phiên này; đưa vào bộ IT Phase 7 (integration end-to-end) hoặc làm thành Đợt 9 trước Phase 3 nếu muốn đóng DoD Phase 2 trước.
+
 ## Các đợt tiếp theo
 
 - [x] **Phase 0.2:** cấu hình application, properties được validate, Clock UTC và unit tests cấu hình.
 - [x] **Phase 0.3:** migration V1, test profile và schema tests; người dùng xác nhận `clean verify` đạt BUILD SUCCESS trên MySQL local sau sửa assertion CHECK. Kiểm chứng runtime JDK 21 vẫn còn riêng.
 - [x] **Phase 1: ĐÃ NGHIỆM THU (2026-09-29)** — entity/repository/enum/auditing, EntityBusinessRulesTest (28 unit test) và RepositoryLayerIT (15 IT) hoàn tất; người dùng chạy `clean verify` local với MySQL đạt BUILD SUCCESS: 75 unit + 21 IT, 0 failures / 0 errors (mục Đợt 4).
-- [x] **Phase 2: ĐÃ NGHIỆM THU (2026-09-29 20:47)** — auth/security, 4 endpoint và rotation; 143 unit testcase 0 lỗi, coverage `service` 100% / `service.tx` 97,6%; người dùng chạy `clean verify` đầy đủ trên MySQL local: 21 IT pass (15 RepositoryLayerIT + 6 schema IT), 0 failures / 0 errors. 21 IT này cũng là lần chạy lại trên layout package đã chuẩn hóa của Đợt 6.
+- [x] **Phase 2: ĐÃ NGHIỆM THU (2026-09-29 20:47)** — auth/security, 4 endpoint và rotation; 143 unit testcase 0 lỗi, coverage `service` 100% / `service.tx` 97,6%; người dùng chạy `clean verify` đầy đủ trên MySQL local: 21 IT pass (15 RepositoryLayerIT + 6 schema IT), 0 failures / 0 errors. 21 IT này cũng là lần chạy lại trên layout package đã chuẩn hóa của Đợt 6. Audit DoD §11 ở Đợt 8 phát hiện 4 hạng mục còn thiếu: BCrypt cost 12 và unit test BCrypt, test filter/security chain (đã bù, tổng 154 test), IT rotation/concurrency (chuyển Phase 7).
 - [ ] **Phase 3:** words CRUD, ownership bản ghi con và due-count.
 - [ ] **Phase 4:** AI adapter, sinh nghĩa và cache race.
 - [ ] **Phase 5:** grading và phrases.
 - [ ] **Phase 6:** review SRS và cleanup.
-- [ ] **Phase 7:** integration end-to-end, tài liệu API và vận hành backend.
+- [ ] **Phase 7:** integration end-to-end, tài liệu API và vận hành backend. Bao gồm nợ DoD Phase 2: IT chứng minh row refresh bị xoá thật (commit), token mới khác token cũ trong cùng giây, token cũ dùng lại thất bại, hai refresh đồng thời chỉ một thành công (§5.2:243).
 
 Không triển khai Android. Đợt 1 chưa tạo endpoint, entity, migration, hoặc cấu hình production.
 

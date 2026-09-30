@@ -31,8 +31,9 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
  *
  * <p>The 403 message is asserted as a literal because {@code RestAccessDeniedHandler.DENIED_MESSAGE}
  * is package-private in {@code com.example.english_app_cdcntt.config} and the handler keeps its own
- * copy ({@code RestAccessDeniedMessages.DENIED}); the two must stay in sync, and that equality is
- * covered by {@code SecurityErrorResponsesTest}.
+ * copy ({@code RestAccessDeniedMessages.DENIED}); the two must stay in sync. The filter-level 403 is
+ * covered by {@code AuthControllerSecurityTest.denyAllRouteIsForbidden}, and this test covers the
+ * controller-level 403 body.
  */
 class GlobalExceptionHandlerTest {
 

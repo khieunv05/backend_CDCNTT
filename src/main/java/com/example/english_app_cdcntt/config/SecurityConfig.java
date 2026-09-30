@@ -49,6 +49,7 @@ public class SecurityConfig {
 
     @Bean
     PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
+        // §1.1: cost 12 (not BCryptPasswordEncoder's default 10); asserted by SecurityConfigTest.
+        return new BCryptPasswordEncoder(12);
     }
 }
