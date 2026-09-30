@@ -290,13 +290,49 @@ Giữ nguyên cả ba trong `config/` (cụm JWT/security); **không** chuyển 
 
 DoD §11 Phase 2 mục 3 yêu cầu integration test với DB thật: row refresh bị xoá **thật (đã commit)**, token mới khác token cũ **trong cùng một giây**, token cũ dùng lại thất bại, và **hai refresh đồng thời chỉ một thành công** — §5.2:243 ghi rõ “Test bằng transaction/kết nối độc lập, không chỉ mock repository”. Hiện chỉ có unit test mock (`RefreshTokenTxServiceTest` 11 test), chưa có IT. Cần MySQL local nên không chạy được trong phiên này; đưa vào bộ IT Phase 7 (integration end-to-end) hoặc làm thành Đợt 9 trước Phase 3 nếu muốn đóng DoD Phase 2 trước.
 
+## Đợt 9 — Phase 3: Words CRUD, ownership và due-count (2026-09-30)
+
+**Trạng thái: hoàn tất Phase 3, đủ DoD §11 (unit + MVC + IT DB thật), đã nghiệm thu trong phiên bằng `clean verify` đầy đủ.**
+
+### Phạm vi triển khai
+
+5 endpoint trong nhóm `/api/words` theo §4.1 (GET /api/words, GET /api/words/due-count, POST /api/words 201, PUT /api/words/{id}, DELETE /api/words/{id}); `GET /api/words/generate` (Phase 4) và `POST /api/words/review` (Phase 6) chưa làm theo kế hoạch. Owner id luôn lấy từ principal đã xác thực (§5.3), không nhận từ request.
+
+### File mới
+
+- [WordController.java](src/main/java/com/example/english_app_cdcntt/controller/WordController.java) — mapper mỏng giữa contract và `WordService`; `SuccessResponse<WordDto>` bao phản hồi create/update.
+- [WordService.java](src/main/java/com/example/english_app_cdcntt/service/WordService.java) + [WordServiceImpl.java](src/main/java/com/example/english_app_cdcntt/service/impl/WordServiceImpl.java) — list, countDue, create, update, delete; kiểm tra trùng tên từ (chuẩn hoá lowercase/trim trước khi so sánh), ownership qua `findOwnedForUpdate` khoá pessimistic, mọi §6.2 check chạy trước mutation.
+- [WordMapper.java](src/main/java/com/example/english_app_cdcntt/mapper/WordMapper.java), [WordForm.java](src/main/java/com/example/english_app_cdcntt/form/WordForm.java), [WordValueForm.java](src/main/java/com/example/english_app_cdcntt/form/WordValueForm.java), [WordDto.java](src/main/java/com/example/english_app_cdcntt/dto/WordDto.java), [WordValueDto.java](src/main/java/com/example/english_app_cdcntt/dto/WordValueDto.java), [DueCountResponse.java](src/main/java/com/example/english_app_cdcntt/dto/DueCountResponse.java), [SuccessResponse.java](src/main/java/com/example/english_app_cdcntt/dto/SuccessResponse.java).
+- Exception: [DuplicateWordException.java](src/main/java/com/example/english_app_cdcntt/exception/DuplicateWordException.java), [OwnershipDeniedException.java](src/main/java/com/example/english_app_cdcntt/exception/OwnershipDeniedException.java), [InvalidRequestException.java](src/main/java/com/example/english_app_cdcntt/exception/InvalidRequestException.java) + 3 handler mới trong [GlobalExceptionHandler.java](src/main/java/com/example/english_app_cdcntt/exception/GlobalExceptionHandler.java): trùng từ → 409 CONFLICT, không sở hữu (hoặc word không tồn tại — không lộ sự tồn tại) → 403 FORBIDDEN, meaning id lạ/không thuộc word → 400.
+
+### Sửa file cũ
+
+- [WordValue.java](src/main/java/com/example/english_app_cdcntt/entity/WordValue.java): thêm `updateDetails(...)` — PUT ghi đè nghĩa tại chỗ, row giữ nguyên id để client theo dõi được (§6.2:284).
+- [WordRepository.java](src/main/java/com/example/english_app_cdcntt/repository/WordRepository.java): thêm `findByUser_IdOrderByIdAsc` (`@EntityGraph` fetch meanings) cho GET list.
+
+### Kiểm thử (mới: 20 unit + 8 IT)
+
+- [WordServiceImplTest.java](src/test/java/com/example/english_app_cdcntt/service/impl/WordServiceImplTest.java) — 8 unit: chuẩn hoá tên từ, trùng tên, meaning id lạ/không thuộc word bị chặn trước khi đụng DB, rollback khi mutation, due-count đếm `nextReview <= now` (biên `==` được tính).
+- [WordControllerTest.java](src/test/java/com/example/english_app_cdcntt/controller/WordControllerTest.java) — 12 MVC: JSON/status của cả 5 endpoint, 401 khi thiếu token, 400 validate, 409 trùng, 403 ownership; owner id luôn từ principal.
+- [WordFlowIT.java](src/test/java/com/example/english_app_cdcntt/service/WordFlowIT.java) — 8 IT trên MySQL local (class không `@Transactional`, mỗi lần gọi service commit/rollback trong transaction thật riêng): flow create→update→delete với assert trực tiếp trên `words`/`word_values` (giữ id nghĩa khi sửa, xoá CASCADE sạch nghĩa); từ mới ngay lập tức rơi vào due-count, đếm đúng theo owner; trùng tên (kể cả khác hoa/th whitespace) → 409 và không đổi dữ liệu; meaning id của người khác → 400 và không lưu gì; **rollback toàn bộ khi lỗi DB thật** — cập nhật với nghĩa mới vượt VARCHAR(1000) gây MySQL error 1406, sau rollback từ + nghĩa giữ nguyên trạng thái; update/delete từ của người khác (và từ không tồn tại) → OwnershipDeniedException, dữ liệu còn nguyên.
+
+### Kết quả kiểm tra
+
+- `.\mvnw.cmd clean test`: **BUILD SUCCESS — Tests run: 174, Failures: 0, Errors: 0, Skipped: 0** (trước đợt: 154; +20 unit).
+- `.\mvnw.cmd clean verify` với `TEST_DB_*` trỏ MySQL 8.0.43 local (lần đầu chạy IT ngay trong phiên): **BUILD SUCCESS — 174 unit + 29 IT, 0 failures / 0 errors** (15 RepositoryLayerIT + 6 schema IT + 8 WordFlowIT).
+- JaCoCo `jacoco:check` đạt; instruction coverage 100% cho `WordServiceImpl`, `WordController`, `WordMapper`.
+
+### Nợ còn lại
+
+Không phát sinh nợ mới cho Phase 3. Nợ IT rotation/concurrency của Phase 2 vẫn ở Phase 7 như Đợt 8 đã ghi.
+
 ## Các đợt tiếp theo
 
 - [x] **Phase 0.2:** cấu hình application, properties được validate, Clock UTC và unit tests cấu hình.
 - [x] **Phase 0.3:** migration V1, test profile và schema tests; người dùng xác nhận `clean verify` đạt BUILD SUCCESS trên MySQL local sau sửa assertion CHECK. Kiểm chứng runtime JDK 21 vẫn còn riêng.
 - [x] **Phase 1: ĐÃ NGHIỆM THU (2026-09-29)** — entity/repository/enum/auditing, EntityBusinessRulesTest (28 unit test) và RepositoryLayerIT (15 IT) hoàn tất; người dùng chạy `clean verify` local với MySQL đạt BUILD SUCCESS: 75 unit + 21 IT, 0 failures / 0 errors (mục Đợt 4).
 - [x] **Phase 2: ĐÃ NGHIỆM THU (2026-09-29 20:47)** — auth/security, 4 endpoint và rotation; 143 unit testcase 0 lỗi, coverage `service` 100% / `service.tx` 97,6%; người dùng chạy `clean verify` đầy đủ trên MySQL local: 21 IT pass (15 RepositoryLayerIT + 6 schema IT), 0 failures / 0 errors. 21 IT này cũng là lần chạy lại trên layout package đã chuẩn hóa của Đợt 6. Audit DoD §11 ở Đợt 8 phát hiện 4 hạng mục còn thiếu: BCrypt cost 12 và unit test BCrypt, test filter/security chain (đã bù, tổng 154 test), IT rotation/concurrency (chuyển Phase 7).
-- [ ] **Phase 3:** words CRUD, ownership bản ghi con và due-count.
+- [x] **Phase 3: ĐÃ NGHIỆM THU (2026-09-30)** — words CRUD, ownership bản ghi con và due-count; 174 unit + 29 IT (8 WordFlowIT trên MySQL local) 0 lỗi, chạy `clean verify` đầy đủ trong phiên (mục Đợt 9).
 - [ ] **Phase 4:** AI adapter, sinh nghĩa và cache race.
 - [ ] **Phase 5:** grading và phrases.
 - [ ] **Phase 6:** review SRS và cleanup.
@@ -304,4 +340,4 @@ DoD §11 Phase 2 mục 3 yêu cầu integration test với DB thật: row refres
 
 Không triển khai Android. Đợt 1 chưa tạo endpoint, entity, migration, hoặc cấu hình production.
 
-Lưu ý: thư mục workspace hiện không phải Git repository, nên không có git diff/commit cho đợt này.
+Lưu ý: workspace hiện **đã là Git repository** (init từ trước, commit gần nhất `8a0ca59` — Phase 2); ghi chú "không phải Git repository" trước đây của Đợt 8 đã lỗi thời, từ Đợt 9 mỗi đợt đóng bằng một commit riêng.

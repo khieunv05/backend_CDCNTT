@@ -80,6 +80,20 @@ public class WordValue {
         return new WordValue(vietnamese, example, exampleTranslation, pronunciation, partOfSpeech);
     }
 
+    /** PUT: rewrites this meaning in place; the row keeps its id so clients can track it (§6.2:284). */
+    public void updateDetails(
+            String vietnamese,
+            String example,
+            String exampleTranslation,
+            String pronunciation,
+            PartOfSpeech partOfSpeech) {
+        this.vietnamese = Objects.requireNonNull(vietnamese, "vietnamese");
+        this.example = example;
+        this.exampleTranslation = exampleTranslation;
+        this.pronunciation = pronunciation;
+        this.partOfSpeech = partOfSpeech;
+    }
+
     /** Keeps both sides of the Word &lt;-&gt; WordValue association in sync. */
     void assignTo(Word word) {
         this.word = word;

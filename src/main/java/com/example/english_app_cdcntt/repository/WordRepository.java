@@ -39,6 +39,10 @@ public interface WordRepository extends JpaRepository<Word, Long> {
     @EntityGraph(attributePaths = {"wordValues"})
     Page<Word> findByUser_Id(Long userId, Pageable pageable);
 
+    /** GET /api/words: the current user's notebook, meanings fetched, ordered by id (§6.2). */
+    @EntityGraph(attributePaths = {"wordValues"})
+    List<Word> findByUser_IdOrderByIdAsc(Long userId);
+
     @EntityGraph(attributePaths = {"wordValues"})
     List<Word> findByUser_IdAndNextReviewLessThanEqual(Long userId, Instant cutoff);
 
