@@ -5,6 +5,7 @@ import com.example.english_app_cdcntt.dto.FieldErrorDetail;
 import com.example.english_app_cdcntt.dto.ValidationErrorResponse;
 import com.example.english_app_cdcntt.form.LoginForm;
 import com.example.english_app_cdcntt.form.RefreshForm;
+import lombok.extern.slf4j.Slf4j;
 import java.util.Comparator;
 import java.util.List;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -15,6 +16,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -26,6 +28,7 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
  * ProblemDetail bodies. Form violations on login/refresh answer the credentials 401 instead of
  * a 400 (§5.2); the failing form type makes the distinction.
  */
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -92,6 +95,28 @@ public class GlobalExceptionHandler {
     ResponseEntity<ValidationErrorResponse> handleInvalidRequest(InvalidRequestException e) {
         return ResponseEntity.badRequest().body(new ValidationErrorResponse(INVALID_INFO_MESSAGE,
                 List.of(new FieldErrorDetail(e.field(), e.getMessage()))));
+    }
+
+    /**
+     * §9.2 — GET /api/words/generate has its own 400 text for a non-word input instead of the
+     * generic "Thông tin không hợp lệ" (same rule as a word/phrase/review denial).
+     */
+    @ExceptionHandler(InvalidWordException.class)
+    ResponseEntity<ErrorResponse> handleInvalidWord(InvalidWordException e) {
+        return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+    }
+
+    /** §8.2 — AI infra failure: fixed §4.1 text for the client, technical detail only in the log. */
+    @ExceptionHandler(AiServiceException.class)
+    ResponseEntity<ErrorResponse> handleAiService(AiServiceException e) {
+        log.warn("AI service failure: {}", e.getDetail(), e.getCause());
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(new ErrorResponse(e.getMessage()));
+    }
+
+    /** §9.2 — a missing query parameter is a client mistake, so it must answer 400, never a 500. */
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    ResponseEntity<ErrorResponse> handleMissingParameter(MissingServletRequestParameterException e) {
+        return ResponseEntity.badRequest().body(new ErrorResponse(INVALID_INFO_MESSAGE));
     }
 
     /**

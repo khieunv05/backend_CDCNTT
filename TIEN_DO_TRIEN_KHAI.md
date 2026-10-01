@@ -326,6 +326,21 @@ DoD §11 Phase 2 mục 3 yêu cầu integration test với DB thật: row refres
 
 Không phát sinh nợ mới cho Phase 3. Nợ IT rotation/concurrency của Phase 2 vẫn ở Phase 7 như Đợt 8 đã ghi.
 
+## Đợt 10 — Phase 4: AI adapter, sinh nghĩa và cache race (2026-09-30)
+
+**Trạng thái: ĐÃ NGHIỆM THU (2026-10-01) — 214 unit (`mvnw test`) + 32 IT trên MySQL local (`clean verify` BUILD SUCCESS do người dùng chạy): 6 schema IT + 15 RepositoryLayerIT + 8 WordFlowIT + 3 WordGenerateFlowIT, 0 failures / 0 errors.**
+
+Phạm vi: `GET /api/words/generate?english=...` theo §4.1/§4.3 — chuẩn hoá + validate tên từ → tra cache global (`word_cache`/`word_cache_values`) → MISS thì gọi LLM (OpenAI-compatible `/v1/chat/completions`, JSON Schema strict trong prompt, response parse chặt) → lưu cache trong transaction mới → trả `GeneratedWordDto`; HIT hoặc thắng race re-read thì không gọi AI.
+
+- `config/AiProperties.java`, `config/AiClientConfig.java` — properties `app.ai.*` (baseUrl/apiKey/model/timeout) validate lúc startup; RestClient kèm Authorization Bearer, header không log.
+- `service/AiClient.java` — interface + record `GeneratedMeaning`/`MeaningItem`; `service/impl/LlmAiClient.java` — đọc response dạng String rồi parse bằng Jackson 3 (`tools.jackson`) để không phụ thuộc converter; mọi sai lệch schema (validWord không boolean, level lạ, số nghĩa ≠ 1–3, field rỗng/độ dài vượt, partOfSpeech lạ, content không phải JSON) → `AiServiceException` (502, message cố định "Dịch vụ AI tạm thời không khả dụng", detail chỉ vào log warn §8.2). Jackson 3 exception là unchecked — bắt `tools.jackson.core.JacksonException`, không phải Jackson 2.
+- `exception/AiServiceException.java` — `MESSAGE` cố định cho client, `detail` riêng cho log; `exception/GlobalExceptionHandler.java` — thêm 502 AiServiceException + 400 cho `InvalidRequestException`/`MissingServletRequestParameterException` (thiếu `english`).
+- `mapper/WordCacheMapper.java` + `service/WordCacheTxService(Impl).java` + `service/GenerateService(Impl).java` — `saveNew` chạy `Propagation.REQUIRES_NEW` trong `try/catch DataIntegrityViolationException` (đuôi rùa `s` chuẩn hoá về "s" trước khi so UNIQUE): rà soát lại bằng `findCached` — chỉ trả kết quả khi re-read thật sự thấy row, không bao giờ tự bịa cache-hit; race vẫn thua → 502.
+- `controller/WordController.java` — endpoint thứ 6 theo §4.1: 200, 400 tên từ lỗi/thiếu param, 401, 502 khi AI lỗi. Không thêm message mới ngoài §6.
+- Test: `LlmAiClientTest` (16 unit — MockRestServiceServer: happy path, non-word passthrough, 429/500/timeout, envelope lỗi, 9 ca schema strict trong đó biên 1000 ký tự chữ Hán NFD dài gấp đôi byte), `GenerateServiceImplTest` (18 unit — HIT không gọi AI, MISS gọi AI, race, normalize, cụm từ 1–5 từ), `WordControllerTest` (+5 MVC case), `WordGenerateFlowIT` (3 IT DB thật: miss→hit với cụm từ "make up …" chỉ 1 lần gọi AI + đúng 1 row, 8 luồng đồng thời đúng 1 row và mọi caller nhận cùng kết quả — AI được hỏi 1..n lần vì khử trùng ở DB, non-word không đụng AI/cache).
+
+Bài học kỹ thuật: chuỗi builder `putObject(...).put(...)` kết thúc ở node con nên `.toString()` chỉ in node con — gán root ra biến rồi `root.toString()`; `.body(JsonNode.class)` của RestClient phụ thuộc converter nên với classpath lẫn Jackson 2+3 phải đọc `String` rồi tự parse; Boot 4 không tự cấp bean `RestClient.Builder` trong context test (context fail toàn bộ IT) — build `RestClient.builder()` trực tiếp trong `AiClientConfig`; key cache trong IT phải khớp regex từ điển (RUN_ID base-36 chứa chữ số → dùng chữ cái thuần); trong race, số lần gọi AI là 1..n (khử trùng ở DB), đừng assert "đúng 1 lần gọi AI".
+
 ## Các đợt tiếp theo
 
 - [x] **Phase 0.2:** cấu hình application, properties được validate, Clock UTC và unit tests cấu hình.
@@ -333,7 +348,7 @@ Không phát sinh nợ mới cho Phase 3. Nợ IT rotation/concurrency của Pha
 - [x] **Phase 1: ĐÃ NGHIỆM THU (2026-09-29)** — entity/repository/enum/auditing, EntityBusinessRulesTest (28 unit test) và RepositoryLayerIT (15 IT) hoàn tất; người dùng chạy `clean verify` local với MySQL đạt BUILD SUCCESS: 75 unit + 21 IT, 0 failures / 0 errors (mục Đợt 4).
 - [x] **Phase 2: ĐÃ NGHIỆM THU (2026-09-29 20:47)** — auth/security, 4 endpoint và rotation; 143 unit testcase 0 lỗi, coverage `service` 100% / `service.tx` 97,6%; người dùng chạy `clean verify` đầy đủ trên MySQL local: 21 IT pass (15 RepositoryLayerIT + 6 schema IT), 0 failures / 0 errors. 21 IT này cũng là lần chạy lại trên layout package đã chuẩn hóa của Đợt 6. Audit DoD §11 ở Đợt 8 phát hiện 4 hạng mục còn thiếu: BCrypt cost 12 và unit test BCrypt, test filter/security chain (đã bù, tổng 154 test), IT rotation/concurrency (chuyển Phase 7).
 - [x] **Phase 3: ĐÃ NGHIỆM THU (2026-09-30)** — words CRUD, ownership bản ghi con và due-count; 174 unit + 29 IT (8 WordFlowIT trên MySQL local) 0 lỗi, chạy `clean verify` đầy đủ trong phiên (mục Đợt 9).
-- [ ] **Phase 4:** AI adapter, sinh nghĩa và cache race.
+- [x] **Phase 4: ĐÃ NGHIỆM THU (2026-10-01)** — AI adapter, sinh nghĩa và cache race; 214 unit + 32 IT (trong đó 3 WordGenerateFlowIT trên MySQL local) 0 lỗi, chạy `clean verify` đầy đủ (mục Đợt 10). Nghiệm thu kèm thay đổi yêu cầu: nhận **cụm từ** 1–5 từ (make up, get along with) — prompt + regex + message 400 + docs §4.1/§7 đã cập nhật cùng lượt.
 - [ ] **Phase 5:** grading và phrases.
 - [ ] **Phase 6:** review SRS và cleanup.
 - [ ] **Phase 7:** integration end-to-end, tài liệu API và vận hành backend. Bao gồm nợ DoD Phase 2: IT chứng minh row refresh bị xoá thật (commit), token mới khác token cũ trong cùng giây, token cũ dùng lại thất bại, hai refresh đồng thời chỉ một thành công (§5.2:243).

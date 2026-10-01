@@ -17,6 +17,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.example.english_app_cdcntt.config.UserPrincipal;
 import com.example.english_app_cdcntt.dto.DueCountResponse;
+import com.example.english_app_cdcntt.dto.GeneratedWordDto;
 import com.example.english_app_cdcntt.dto.WordDto;
 import com.example.english_app_cdcntt.dto.WordValueDto;
 import com.example.english_app_cdcntt.enums.Level;
@@ -24,10 +25,13 @@ import com.example.english_app_cdcntt.enums.PartOfSpeech;
 import com.example.english_app_cdcntt.exception.DuplicateWordException;
 import com.example.english_app_cdcntt.exception.GlobalExceptionHandler;
 import com.example.english_app_cdcntt.exception.InvalidRequestException;
+import com.example.english_app_cdcntt.exception.InvalidWordException;
+import com.example.english_app_cdcntt.exception.AiServiceException;
 import org.springframework.security.web.method.annotation.AuthenticationPrincipalArgumentResolver;
 import com.example.english_app_cdcntt.exception.OwnershipDeniedException;
 import com.example.english_app_cdcntt.form.WordForm;
 import com.example.english_app_cdcntt.form.WordValueForm;
+import com.example.english_app_cdcntt.service.GenerateService;
 import com.example.english_app_cdcntt.service.WordService;
 import java.time.Instant;
 import java.util.List;
@@ -63,11 +67,14 @@ class WordControllerTest {
     @Mock
     private WordService wordService;
 
+    @Mock
+    private GenerateService generateService;
+
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(new WordController(wordService))
+        mockMvc = MockMvcBuilders.standaloneSetup(new WordController(wordService, generateService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
                 .build();
@@ -258,5 +265,74 @@ class WordControllerTest {
                 .andExpect(jsonPath("$.details").doesNotExist());
 
         verifyNoInteractions(wordService);
+    }
+
+    // ---- GET /api/words/generate (§4.1 row 7) ----
+
+    private static GeneratedWordDto generatedWordDto() {
+        return new GeneratedWordDto("banana", Level.B1, List.of(
+                new WordValueDto(null, "quả chuối", "a banana", "một quả chuối", "/bəˈnɑː.nə/", PartOfSpeech.NOUN)));
+    }
+
+    @Test
+    @DisplayName("generate: cache/AI result answers 200 with null ids and the raw english")
+    void generate_answers200() throws Exception {
+        when(generateService.generateWord("banana")).thenReturn(generatedWordDto());
+
+        mockMvc.perform(get("/api/words/generate").param("english", "banana"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.english").value("banana"))
+                .andExpect(jsonPath("$.level").value("B1"))
+                .andExpect(jsonPath("$.values[0].id").doesNotExist())
+                .andExpect(jsonPath("$.values[0].vietnamese").value("quả chuối"));
+
+        verify(generateService).generateWord("banana");
+        verifyNoInteractions(wordService);
+    }
+
+    @Test
+    @DisplayName("generate: a non-word answers 400 with the §4.1 text")
+    void generate_nonWord_answers400() throws Exception {
+        when(generateService.generateWord("abc123")).thenThrow(new InvalidWordException());
+
+        mockMvc.perform(get("/api/words/generate").param("english", "abc123"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message")
+                        .value("Từ hoặc cụm từ gửi lên không phải một từ tiếng Anh hợp lệ"));
+
+        verifyNoInteractions(wordService);
+    }
+
+    @Test
+    @DisplayName("generate: a phrase (make up) passes through to the service and answers 200")
+    void generate_phrase_answers200() throws Exception {
+        when(generateService.generateWord("make up")).thenReturn(
+                new GeneratedWordDto("make up", Level.B1, List.of()));
+
+        mockMvc.perform(get("/api/words/generate").param("english", "make up"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.english").value("make up"));
+    }
+
+    @Test
+    @DisplayName("generate: an AI infrastructure failure answers 502 with the §4.1 text")
+    void generate_aiFailure_answers502() throws Exception {
+        when(generateService.generateWord("banana")).thenThrow(new AiServiceException("provider 503"));
+
+        mockMvc.perform(get("/api/words/generate").param("english", "banana"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.message").value("Dịch vụ AI tạm thời không khả dụng"));
+
+        verifyNoInteractions(wordService);
+    }
+
+    @Test
+    @DisplayName("generate: a missing english query parameter answers 400, never 500")
+    void generate_missingParam_answers400() throws Exception {
+        mockMvc.perform(get("/api/words/generate"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Thông tin không hợp lệ"));
+
+        verifyNoInteractions(generateService, wordService);
     }
 }

@@ -2,10 +2,12 @@ package com.example.english_app_cdcntt.controller;
 
 import com.example.english_app_cdcntt.config.UserPrincipal;
 import com.example.english_app_cdcntt.dto.DueCountResponse;
+import com.example.english_app_cdcntt.dto.GeneratedWordDto;
 import com.example.english_app_cdcntt.dto.MessageResponse;
 import com.example.english_app_cdcntt.dto.SuccessResponse;
 import com.example.english_app_cdcntt.dto.WordDto;
 import com.example.english_app_cdcntt.form.WordForm;
+import com.example.english_app_cdcntt.service.GenerateService;
 import com.example.english_app_cdcntt.service.WordService;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -18,14 +20,15 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * The five word endpoints of Phase 3 (§4.1 rows 5, 6, 8, 9, 10). Thin by design: it only moves data
- * between the contract shapes and {@link WordService}, and the owner id always comes from the
- * authenticated principal (§5.3) — never from the request. {@code GET /api/words/generate} (row 7)
- * arrives in Phase 4 and {@code POST /api/words/review} (row 11) in Phase 6.
+ * The word endpoints of §4.1 rows 5–10. Thin by design: it only moves data between the
+ * contract shapes and the services, and the owner id always comes from the authenticated
+ * principal (§5.3) — never from the request. {@code POST /api/words/review} (row 11)
+ * arrives in Phase 6.
  */
 @RestController
 @RequestMapping("/api/words")
@@ -36,9 +39,11 @@ public class WordController {
     static final String DELETE_SUCCESS_MESSAGE = "Xóa từ thành công";
 
     private final WordService wordService;
+    private final GenerateService generateService;
 
-    public WordController(WordService wordService) {
+    public WordController(WordService wordService, GenerateService generateService) {
         this.wordService = wordService;
+        this.generateService = generateService;
     }
 
     @GetMapping
@@ -49,6 +54,18 @@ public class WordController {
     @GetMapping("/due-count")
     DueCountResponse dueCount(@AuthenticationPrincipal UserPrincipal principal) {
         return wordService.countDue(principal.id());
+    }
+
+    /**
+     * §4.1 row 7 — generate the meaning set of ONE English word. The shared cache makes the
+     * answer independent of the caller, so the principal is only the §5.3 access gate. Body:
+     * one {@link GeneratedWordDto} with null ids (same shape as a row-5 element); 400 when the
+     * parameter is not a single English word, 502 when the AI service fails.
+     */
+    @GetMapping("/generate")
+    GeneratedWordDto generate(@AuthenticationPrincipal UserPrincipal principal,
+            @RequestParam String english) {
+        return generateService.generateWord(english);
     }
 
     @PostMapping

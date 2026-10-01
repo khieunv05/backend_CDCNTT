@@ -206,7 +206,7 @@ Ví dụ response tạo từ:
 | 4 | POST `/api/auth/refresh` | 200 AuthResponse mới | 401 `Đăng nhập thất bại` hoặc `Phiên đăng nhập hết hạn` |
 | 5 | GET `/api/words` | 200 List<WordDto> | 401 |
 | 6 | GET `/api/words/due-count` | 200 DueCountResponse | 401 |
-| 7 | GET `/api/words/generate?english=...` | 200 GeneratedWordDto | 400 `Từ gửi lên không phải một từ tiếng Anh`; 502 lỗi AI |
+| 7 | GET `/api/words/generate?english=...` | 200 GeneratedWordDto | 400 `Từ hoặc cụm từ gửi lên không phải một từ tiếng Anh hợp lệ` — nhận 1–5 từ (make up, get along with), lower-case + gộp khoảng trắng; 502 lỗi AI |
 | 8 | POST `/api/words` | 201 SuccessResponse<WordDto>: `Thêm từ thành công` | 400; 409 `Từ này đã có trong sổ của bạn` |
 | 9 | PUT `/api/words/{id}` | 200 SuccessResponse<WordDto>: `Sửa từ thành công` | 400; 403 `Không có quyền sửa từ này`; 409 trùng từ |
 | 10 | DELETE `/api/words/{id}` | 200 `Xóa từ thành công` | 403 `Không có quyền xóa từ này` |
@@ -305,8 +305,8 @@ API này **không idempotent**: hai request hợp lệ tuần tự là hai lần
 
 - `GeneratedWordDto(String english, Level level, List<WordValueDto> values)`; values.id luôn null để không lộ/nhầm ID cache với ID sổ từ.
 - Điều phối không có transaction dài:
-  1. Chuẩn hóa english như §2. Thiếu/rỗng/quá 255 ký tự hoặc sai dạng một từ → 400 `Từ gửi lên không phải một từ tiếng Anh`.
-  2. Kiểm tra hình thức bằng regex `^[a-z]+(?:['-][a-z]+)*$` (cho phép dấu nối/nháy đơn nội bộ); đây không phải bằng chứng từ thực tồn tại.
+  1. Chuẩn hóa english như §2: strip + **gộp khoảng trắng lặp thành 1** + lower-case. Thiếu/rỗng/quá 255 ký tự hoặc sai dạng → 400 `Từ hoặc cụm từ gửi lên không phải một từ tiếng Anh hợp lệ`.
+  2. Kiểm tra hình thức bằng regex `^[a-z]+(?:['-][a-z]+)*(?: [a-z]+(?:['-][a-z]+)*){0,4}$` — nhận **1–5 từ** (cụm động từ/collocation: `make up`, `get along with`); dấu nối/nháy đơn nội bộ; đây không phải bằng chứng từ thực tồn tại.
   3. Đọc cache trong transaction đọc ngắn, fetch values và map DTO. HIT → trả ngay, không gọi AI.
   4. MISS → gọi AI ngoài transaction. `validWord=false` → 400; AI lỗi/schema sai → 502; cả hai không ghi cache.
   5. Dữ liệu hợp lệ → transaction mới lưu WordCache + values atomic; trả DTO sau commit. Key lấy từ request chuẩn hóa, không để AI tự đổi key.
