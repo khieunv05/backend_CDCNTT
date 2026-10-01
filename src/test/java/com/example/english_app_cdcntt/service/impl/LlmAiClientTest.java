@@ -17,6 +17,7 @@ import com.example.english_app_cdcntt.config.SecretValue;
 import com.example.english_app_cdcntt.enums.Level;
 import com.example.english_app_cdcntt.enums.PartOfSpeech;
 import com.example.english_app_cdcntt.exception.AiServiceException;
+import com.example.english_app_cdcntt.exception.InvalidPhraseException;
 import com.example.english_app_cdcntt.service.AiClient;
 import java.net.SocketTimeoutException;
 import java.net.URI;
@@ -282,6 +283,163 @@ class LlmAiClientTest {
         AiClient.GeneratedMeaning meaning = client.generateWordMeaning("banana");
         assertThat(meaning.validWord()).isTrue();
         assertThat(meaning.values().get(0).vietnamese()).hasSize(1000);
+        server.verify();
+    }
+
+    // ---- gradePhrase (Phase 5, §4.1 rows 13–14) ----
+
+    private AiClient.GradingError error(String incorrect, String correction, String explanation) {
+        return new AiClient.GradingError(incorrect, correction, explanation);
+    }
+
+    private AiClient.GradingResult grade(String contentJson) throws Exception {
+        server.expect(requestTo("https://ai.test/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess(envelope(contentJson), MediaType.APPLICATION_JSON));
+        return client.gradePhrase("I have went to the store yesterday.");
+    }
+
+    private String goodGradingContent() {
+        return "{\"validPhrase\":true,\"score\":8,"
+                + "\"correctedText\":\"I went to the store yesterday.\","
+                + "\"errors\":[{\"incorrect\":\"have went\",\"correction\":\"went\","
+                + "\"explanation\":\"Past simple, not present perfect.\"}]}";
+    }
+
+    @Test
+    @DisplayName("chấm điểm: payload chuẩn → GradingResult đầy đủ")
+    void mapsGoodGrading() throws Exception {
+        AiClient.GradingResult result = grade(goodGradingContent());
+        assertThat(result.score()).isEqualTo(8);
+        assertThat(result.correctedText()).isEqualTo("I went to the store yesterday.");
+        assertThat(result.errors()).hasSize(1);
+        assertThat(result.errors().get(0)).isEqualTo(
+                error("have went", "went", "Past simple, not present perfect."));
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("incorrect/correction rỗng vẫn hợp lệ, explanation là bắt buộc")
+    void allowsEmptyIncorrectAndCorrection() throws Exception {
+        String content = "{\"validPhrase\":true,\"score\":0,\"correctedText\":\"Hello.\","
+                + "\"errors\":[{\"incorrect\":\"\",\"correction\":\"\",\"explanation\":\"ok\"}]}";
+        AiClient.GradingResult result = grade(content);
+        assertThat(result.errors()).hasSize(1);
+        assertThat(result.errors().get(0).incorrect()).isEmpty();
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("validPhrase=false → InvalidPhraseException 400 theo §8.2:355 (cờ ở adapter)")
+    void passesNonPhraseThrough() throws Exception {
+        assertThatThrownBy(() -> grade("{\"validPhrase\":false}"))
+                .isInstanceOf(InvalidPhraseException.class);
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("score 11 và -1 → 502 (không kẹp biên)")
+    void rejectsScoreOutOfRange() throws Exception {
+        server.expect(requestTo("https://ai.test/chat/completions"))
+                .andRespond(withSuccess(envelope("{\"validPhrase\":true,\"score\":11,"
+                        + "\"correctedText\":\"x\",\"errors\":[]}"), MediaType.APPLICATION_JSON));
+        server.expect(requestTo("https://ai.test/chat/completions"))
+                .andRespond(withSuccess(envelope("{\"validPhrase\":true,\"score\":-1,"
+                        + "\"correctedText\":\"x\",\"errors\":[]}"), MediaType.APPLICATION_JSON));
+
+        assertThatThrownBy(() -> client.gradePhrase("Some text."))
+                .isInstanceOf(AiServiceException.class);
+        assertThatThrownBy(() -> client.gradePhrase("Some text."))
+                .isInstanceOf(AiServiceException.class);
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("score là chuỗi \"8\" → 502 (cấm coercion)")
+    void rejectsStringScore() throws Exception {
+        assertThatThrownBy(() -> grade(goodGradingContent().replace("\"score\":8", "\"score\":\"8\"")))
+                .isInstanceOf(AiServiceException.class);
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("thiếu score → 502")
+    void rejectsMissingScore() throws Exception {
+        assertThatThrownBy(() -> grade(goodGradingContent().replace("\"score\":8,", "")))
+                .isInstanceOf(AiServiceException.class);
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("correctedText rỗng → 502")
+    void rejectsBlankCorrectedText() throws Exception {
+        assertThatThrownBy(() -> grade(goodGradingContent()
+                .replace("I went to the store yesterday.", " ")))
+                .isInstanceOf(AiServiceException.class);
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("correctedText vượt 10000 ký tự → 502")
+    void rejectsOversizedCorrectedText() throws Exception {
+        String oversized = "y".repeat(10001);
+        assertThatThrownBy(() -> grade(goodGradingContent()
+                .replace("I went to the store yesterday.", oversized)))
+                .isInstanceOf(AiServiceException.class);
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("explanation rỗng → 502")
+    void rejectsBlankExplanation() throws Exception {
+        assertThatThrownBy(() -> grade(goodGradingContent()
+                .replace("Past simple, not present perfect.", " ")))
+                .isInstanceOf(AiServiceException.class);
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("101 lỗi → 502")
+    void rejectsTooManyErrors() throws Exception {
+        var root = JSON.createObjectNode().put("validPhrase", true).put("score", 5)
+                .put("correctedText", "ok");
+        var errors = root.putArray("errors");
+        for (int i = 0; i < 101; i++) {
+            errors.addObject().put("incorrect", "a").put("correction", "b")
+                    .put("explanation", "c" + i);
+        }
+        assertThatThrownBy(() -> grade(root.toString()))
+                .isInstanceOf(AiServiceException.class);
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("validPhrase là chuỗi \"true\" → 502 (cấm coercion)")
+    void rejectsStringValidPhrase() throws Exception {
+        assertThatThrownBy(() -> grade("{\"validPhrase\":\"true\"}"))
+                .isInstanceOf(AiServiceException.class);
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("429 khi chấm điểm → 502, một request duy nhất")
+    void gradeRateLimitFailsFast() throws Exception {
+        server.expect(requestTo("https://ai.test/chat/completions"))
+                .andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS));
+
+        assertThatThrownBy(() -> client.gradePhrase("Some text to grade."))
+                .isInstanceOf(AiServiceException.class);
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("500 khi chấm điểm → 502 AiServiceException")
+    void gradeServerErrorFailsFast() throws Exception {
+        server.expect(requestTo("https://ai.test/chat/completions"))
+                .andRespond(withStatus(HttpStatus.INTERNAL_SERVER_ERROR));
+
+        assertThatThrownBy(() -> client.gradePhrase("Some text to grade."))
+                .isInstanceOf(AiServiceException.class);
         server.verify();
     }
 }

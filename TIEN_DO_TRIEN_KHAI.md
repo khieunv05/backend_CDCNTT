@@ -341,6 +341,27 @@ Phạm vi: `GET /api/words/generate?english=...` theo §4.1/§4.3 — chuẩn ho
 
 Bài học kỹ thuật: chuỗi builder `putObject(...).put(...)` kết thúc ở node con nên `.toString()` chỉ in node con — gán root ra biến rồi `root.toString()`; `.body(JsonNode.class)` của RestClient phụ thuộc converter nên với classpath lẫn Jackson 2+3 phải đọc `String` rồi tự parse; Boot 4 không tự cấp bean `RestClient.Builder` trong context test (context fail toàn bộ IT) — build `RestClient.builder()` trực tiếp trong `AiClientConfig`; key cache trong IT phải khớp regex từ điển (RUN_ID base-36 chứa chữ số → dùng chữ cái thuần); trong race, số lần gọi AI là 1..n (khử trùng ở DB), đừng assert "đúng 1 lần gọi AI".
 
+## Đợt 11 — Phase 5: grading và phrases (2026-10-01)
+
+**Audit 2026-10-01 (sau nghiệm thu) — ĐÃ XÁC NHẬN trên MySQL:** đối chiếu §8.1/§8.2/§12 với code, sửa 4 lệch:
+1. `GradingResult` bỏ `validPhrase` — đúng hợp đồng §8.2:348 `(int score, String correctedText, List<GradingError>)`; cờ chuyển về adapter (`LlmAiClient.parseGrading` ném `InvalidPhraseException` khi `validPhrase=false`), bỏ guard ở `PhraseTxServiceImpl`.
+2. GET /api/phrases đổi `OrderByCreatedAtDesc` → `OrderByIdAsc` (§8.1 yêu cầu id ASC).
+3. Log lỗi AI thêm correlation ID 8 ký tự + HTTP status (§8.2:359).
+4. Bổ sung `GradingServiceImplTest` (biên 9/10/5000/5001, chuỗi rỗng, ủy quyền AI) + test 500 → 502 cho grade (§12).
+Unit 216/0 lỗi, verify + jacoco xanh; IT 35/35 xanh trên MySQL (người dùng xác nhận Build Success) — Phase 4+5 khớp docs 100%.
+
+**Trạng thái: ĐÃ NGHIỆM THU (2026-10-01)** — người dùng chạy `clean verify` đầy đủ trên MySQL local đạt BUILD SUCCESS: 210 unit + 35 IT, 0 failures / 0 errors (trong đó 3 `PhraseFlowIT` lần đầu chạy thật trên MySQL).
+
+Phạm vi: `POST /api/phrases`, `GET /api/phrases`, `DELETE /api/phrases/{id}` theo §4.1/§8.1 — validate đoạn văn 10–5000 ký tự → `GradingService` gọi LLM chấm điểm (schema strict như Đợt 10) → chỉ lưu khi `validPhrase=true` (không passthrough câu vô nghĩa) → trả `PhraseDto` kèm `errors` (lỗi sai, sửa lại, giải thích); list sắp xếp mới nhất trước; delete chỉ chủ sở hữu (403, row con xoá cascade).
+
+- `service/AiClient.java` — thêm record `GradingResult(validPhrase, score, correctedText, errors)`/`GradingError` và `gradePhrase(String)`; `service/impl/LlmAiClient.java` — prompt chấm đoạn văn, parse chặt: `validPhrase` boolean, `score` nguyên 0–10 không kẹp biên, `correctedText` 10–10000 ký tự, tối đa 100 lỗi, `explanation` bắt buộc ≤5000, `incorrect`/`correction` tuỳ chọn ≤5000 — sai lệch nào cũng 502.
+- `exception/InvalidPhraseException.java` (400, "Đoạn văn gửi lên không hợp lệ"), `exception/OwnershipDeniedException.java` thêm factory `deletePhrase()` (403, "Không có quyền xóa đoạn văn này"); `exception/GlobalExceptionHandler.java` bắt 2 exception trên + Bean Validation `PhraseForm` trả message riêng.
+- `form/PhraseForm.java`, `dto/PhraseDto.java`, `dto/GrammarErrorDto.java`, `mapper/PhraseMapper.java`; `service/GradingService(Impl)` — chỉ là guard 502→400 giữa AI và flow; `service/PhraseService(Impl)` — create (AI ngoài transaction) / list (map trong tx để đọc lazy `errors`) / delete; `service/PhraseTxService(Impl)` — persist phrase + nhiều `GrammarError` cascade trong 1 tx rồi map DTO ngay trong tx.
+- `repository/PhraseRepository.java` — `findByUser_IdOrderByCreatedAtDesc`, `findOwnedForUpdate` (PESSIMISTIC_WRITE theo mẫu `WordRepository`), `deleteById`. `controller/PhraseController.java` — 3 endpoint, message §6: "Thêm đoạn văn thành công" / "Xóa đoạn văn thành công", DELETE trả `MessageResponse` như word.
+- Test: `LlmAiClientTest` +12 (happy path chấm điểm, passthrough, biên score 11/-1/string/thiếu, correctedText rỗng/10001, 101 lỗi, explanation rỗng/thiếu/5001, validPhrase sai kiểu, 429), `GradingServiceImplTest` (5), `PhraseServiceImplTest` (5), `PhraseControllerTest` (7), `PhraseFlowIT` (3 IT DB thật: create→2 row `grammar_errors` + list mới nhất trước, `validPhrase=false` không lưu gì + rows user giữ nguyên, delete 403 người khác + đúng chủ sở hữu xoá sạch cascade).
+
+Bài học kỹ thuật: một lượt gọi tool có thể bị gateway chèn chuỗi placeholder vào giữa nội dung file đang ghi — sau mỗi lần ghi/edit đều phải grep `proxy compacted` trên toàn `src`; pwsh `Get-Content` đọc mặc định theo ANSI nên văn bản UTF-8 tiếng Việt bị hỏng kép khi qua Set-Content — sửa bằng round-trip bytes windows-1252→UTF-8 và luôn chỉ định `-Encoding UTF8`.
+
 ## Các đợt tiếp theo
 
 - [x] **Phase 0.2:** cấu hình application, properties được validate, Clock UTC và unit tests cấu hình.
@@ -349,7 +370,7 @@ Bài học kỹ thuật: chuỗi builder `putObject(...).put(...)` kết thúc �
 - [x] **Phase 2: ĐÃ NGHIỆM THU (2026-09-29 20:47)** — auth/security, 4 endpoint và rotation; 143 unit testcase 0 lỗi, coverage `service` 100% / `service.tx` 97,6%; người dùng chạy `clean verify` đầy đủ trên MySQL local: 21 IT pass (15 RepositoryLayerIT + 6 schema IT), 0 failures / 0 errors. 21 IT này cũng là lần chạy lại trên layout package đã chuẩn hóa của Đợt 6. Audit DoD §11 ở Đợt 8 phát hiện 4 hạng mục còn thiếu: BCrypt cost 12 và unit test BCrypt, test filter/security chain (đã bù, tổng 154 test), IT rotation/concurrency (chuyển Phase 7).
 - [x] **Phase 3: ĐÃ NGHIỆM THU (2026-09-30)** — words CRUD, ownership bản ghi con và due-count; 174 unit + 29 IT (8 WordFlowIT trên MySQL local) 0 lỗi, chạy `clean verify` đầy đủ trong phiên (mục Đợt 9).
 - [x] **Phase 4: ĐÃ NGHIỆM THU (2026-10-01)** — AI adapter, sinh nghĩa và cache race; 214 unit + 32 IT (trong đó 3 WordGenerateFlowIT trên MySQL local) 0 lỗi, chạy `clean verify` đầy đủ (mục Đợt 10). Nghiệm thu kèm thay đổi yêu cầu: nhận **cụm từ** 1–5 từ (make up, get along with) — prompt + regex + message 400 + docs §4.1/§7 đã cập nhật cùng lượt.
-- [ ] **Phase 5:** grading và phrases.
+- [x] **Phase 5: ĐÃ NGHIỆM THU (2026-10-01)** — grading và phrases; 210 unit + 35 IT (trong đó 3 `PhraseFlowIT` trên MySQL local) 0 lỗi, chạy `clean verify` đầy đủ (mục Đợt 11). Nghiệm thu kèm một lỗi thật do IT phát hiện: `PhraseTxServiceImpl.save` từng đọc `score` khi `validPhrase=false` (NPE) — đã thêm guard 400 ở ranh giới tx; 1 lỗi assertion IT sửa cùng lượt.
 - [ ] **Phase 6:** review SRS và cleanup.
 - [ ] **Phase 7:** integration end-to-end, tài liệu API và vận hành backend. Bao gồm nợ DoD Phase 2: IT chứng minh row refresh bị xoá thật (commit), token mới khác token cũ trong cùng giây, token cũ dùng lại thất bại, hai refresh đồng thời chỉ một thành công (§5.2:243).
 

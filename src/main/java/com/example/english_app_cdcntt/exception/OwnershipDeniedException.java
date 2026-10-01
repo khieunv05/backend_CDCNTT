@@ -26,4 +26,9 @@ public class OwnershipDeniedException extends AccessDeniedException {
     public static OwnershipDeniedException deleteWord() {
         return new OwnershipDeniedException("Không có quyền xóa từ này");
     }
+
+    /** §4.1 row 14 — missing or foreign phrase id on DELETE. */
+    public static OwnershipDeniedException deletePhrase() {
+        return new OwnershipDeniedException("Không có quyền xóa đoạn văn này");
+    }
 }

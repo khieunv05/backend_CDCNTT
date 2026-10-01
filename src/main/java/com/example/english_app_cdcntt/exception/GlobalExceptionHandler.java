@@ -5,6 +5,8 @@ import com.example.english_app_cdcntt.dto.FieldErrorDetail;
 import com.example.english_app_cdcntt.dto.ValidationErrorResponse;
 import com.example.english_app_cdcntt.form.LoginForm;
 import com.example.english_app_cdcntt.form.RefreshForm;
+import com.example.english_app_cdcntt.form.PhraseForm;
+import com.example.english_app_cdcntt.form.LoginForm;
 import lombok.extern.slf4j.Slf4j;
 import java.util.Comparator;
 import java.util.List;
@@ -43,6 +45,11 @@ public class GlobalExceptionHandler {
         if (formType == LoginForm.class || formType == RefreshForm.class) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(new ErrorResponse("Đăng nhập thất bại"));
+        }
+        if (formType == PhraseForm.class) {
+            // §9.2 — the phrase endpoints answer one fixed 400 text for every field violation.
+            return ResponseEntity.badRequest()
+                    .body(new ErrorResponse(InvalidPhraseException.MESSAGE));
         }
         List<FieldErrorDetail> details = e.getBindingResult().getFieldErrors().stream()
                 .map(fieldError -> new FieldErrorDetail(fieldError.getField(), fieldError.getDefaultMessage()))
@@ -103,6 +110,12 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(InvalidWordException.class)
     ResponseEntity<ErrorResponse> handleInvalidWord(InvalidWordException e) {
+        return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+    }
+
+    /** §9.2 — POST /api/phrases has its own 400 text for an invalid paragraph (§4.1 row 13). */
+    @ExceptionHandler(InvalidPhraseException.class)
+    ResponseEntity<ErrorResponse> handleInvalidPhrase(InvalidPhraseException e) {
         return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
     }
 
