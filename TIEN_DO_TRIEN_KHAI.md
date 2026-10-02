@@ -384,7 +384,7 @@ Bài học kỹ thuật: một lượt gọi tool có thể bị gateway chèn c
 
 ## Đợt 14 — Phase 7: nghiệm thu và vận hành backend (2026-10-02)
 
-**Trạng thái: CHỜ NGƯỜI DÙNG CHẠY `clean verify` TRÊN MYSQL** — trong phiên đã đạt test-compile EXIT=0 và unit suite `test` EXIT=0 (BUILD SUCCESS). Đã viết 2 lớp IT mới (15 + 5 test) cần MySQL local để chạy thật.
+**Trạng thái: ĐÃ NGHIỆM THU (2026-10-02)** — người dùng chạy `clean verify` trên MySQL thật: **BUILD SUCCESS, 58 IT 0 lỗi 0 failure** (58 = 38 cũ + 15 ApiEndToEndIT + 5 RefreshRotationIT). Jacoco đo trong phiên: `service` **97,1%**, tổng thể **95,1%** (chuẩn §11 ≥ 80%). Hai vòng sửa sau run đầu: (1) mapper Jackson 3 `tools.jackson` thay vì autowire Jackson 2 (Boot 4 — 20 lỗi UnsatisfiedDependency); (2) stub grading truyền nhầm feedback vào vị trí `correctedText` của `GradingResult(score, correctedText, errors)`; (3) 2 assertion đếm row RefreshRotationIT đổi sang delta (các test @Order trước tích lũy row, đếm tuyệt đối sai).
 
 - **`ApiEndToEndIT`** (15 test @Order, HTTP thật RESTful + JWT thật, MySQL, `@MockitoBean AiService`): kịch bản §11 Phase 7 register→login→generate→tạo từ→due-count→review→due-count giảm→list→update→phrase chấm điểm→xoá phrase→logout→refresh bị từ chối→đối chiếu DB cuối (đủ 14 endpoint trừ generate? có — generate qua stub); logout xác nhận **xoá row thật (commit)** bằng JdbcTemplate từ transaction mới sau request.
 - **`RefreshRotationIT`** (5 test @Order) — **trả nợ DoD Phase 2 (§5.2:243)**: hai login phát hành trong cùng giây vẫn cho token pair khác nhau (jti `UUID.randomUUID()`); refresh rotation cấp token mới + xoá row cũ (1 row/user sau rotate); token cũ dùng lại → 401; **hai refresh đồng thời cùng token cũ → đúng một 200, một 401** (PESSIMISTIC_WRITE serialize, dùng `java.net.http.HttpClient` + latch). 
@@ -403,7 +403,7 @@ Bài học kỹ thuật: một lượt gọi tool có thể bị gateway chèn c
 - [x] **Phase 4: ĐÃ NGHIỆM THU (2026-10-01)** — AI adapter, sinh nghĩa và cache race; 214 unit + 32 IT (trong đó 3 WordGenerateFlowIT trên MySQL local) 0 lỗi, chạy `clean verify` đầy đủ (mục Đợt 10). Nghiệm thu kèm thay đổi yêu cầu: nhận **cụm từ** 1–5 từ (make up, get along with) — prompt + regex + message 400 + docs §4.1/§7 đã cập nhật cùng lượt.
 - [x] **Phase 5: ĐÃ NGHIỆM THU (2026-10-01)** — grading và phrases; 210 unit + 35 IT (trong đó 3 `PhraseFlowIT` trên MySQL local) 0 lỗi, chạy `clean verify` đầy đủ (mục Đợt 11). Nghiệm thu kèm một lỗi thật do IT phát hiện: `PhraseTxServiceImpl.save` từng đọc `score` khi `validPhrase=false` (NPE) — đã thêm guard 400 ở ranh giới tx; 1 lỗi assertion IT sửa cùng lượt.
 - [x] **Phase 6: ĐÃ NGHIỆM THU (2026-10-02)** — review SRS và cleanup. 227 unit + 38 IT (MySQL) 0 lỗi; bảng SRS điều chỉnh 1→3→7→14→30 theo yêu cầu user; SRS ladder đã nghiệm thu kèm Đợt 12.
-- [ ] **Phase 7: ĐÃ TRIỂN KHAI (2026-10-02), chờ nghiệm thu** — ApiEndToEndIT (15 test) + RefreshRotationIT (5 test, trả nợ DoD Phase 2 §5.2:243) + API_REFERENCE.md + README.md + audit §14; unit xanh trong phiên, chờ user chạy `clean verify` MySQL (mục Đợt 14).
+- [x] **Phase 7: ĐÃ NGHIỆM THU (2026-10-02)** — ApiEndToEndIT (15 test) + RefreshRotationIT (5 test, trả nợ DoD Phase 2 §5.2:243) + API_REFERENCE.md + README.md + audit §14; người dùng xác nhận `clean verify` MySQL BUILD SUCCESS, 58 IT 0 lỗi, jacoco service 97,1% (mục Đợt 14). Commit đợt: `aa898e3`.
 
 Không triển khai Android. Đợt 1 chưa tạo endpoint, entity, migration, hoặc cấu hình production.
 
