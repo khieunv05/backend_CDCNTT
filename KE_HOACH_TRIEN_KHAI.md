@@ -293,9 +293,10 @@ Các record trên mô tả shape; khi triển khai bổ sung `@Valid`, `@NotNull
 - Số row tìm được khác số ID distinct → 403, rollback toàn bộ, không cập nhật một phần.
 - Với mỗi word: tăng `reviewCount` một lần; `nextReview = now + interval`; `updatedAt=now`; lưu batch trong một transaction.
 
-| reviewCount sau tăng | 1 | 2 | 3 | 4 | 5 | ≥6 |
-|---|---|---|---|---|---|---|
-| interval (ngày, mỗi ngày 24h) | 1 | 2 | 4 | 7 | 15 | 30 |
+| reviewCount sau tăng | 1 | 2 | 3 | 4 | ≥5 |
+|---|---|---|---|---|---|
+| interval (ngày, mỗi ngày 24h) | 1 | 3 | 7 | 14 | 30 |
+*(Bảng điều chỉnh theo yêu cầu user 2026-10-02: 1→3→7→14→30, thay bảng gốc 1/2/4/7/15/30.)*
 
 API này **không idempotent**: hai request hợp lệ tuần tự là hai lần xác nhận ôn. Không tự động retry POST review khi không biết request trước đã commit hay chưa; idempotency key chưa thuộc giai đoạn này. Không bắt buộc word đang due mới được xác nhận.
 

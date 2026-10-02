@@ -31,4 +31,9 @@ public class OwnershipDeniedException extends AccessDeniedException {
     public static OwnershipDeniedException deletePhrase() {
         return new OwnershipDeniedException("Không có quyền xóa đoạn văn này");
     }
+
+    /** §4.1 row 11 — any foreign/unknown id inside a review batch. */
+    public static OwnershipDeniedException review() {
+        return new OwnershipDeniedException("Không có quyền với từ không thuộc sở hữu");
+    }
 }

@@ -362,6 +362,16 @@ Phạm vi: `POST /api/phrases`, `GET /api/phrases`, `DELETE /api/phrases/{id}` t
 
 Bài học kỹ thuật: một lượt gọi tool có thể bị gateway chèn chuỗi placeholder vào giữa nội dung file đang ghi — sau mỗi lần ghi/edit đều phải grep `proxy compacted` trên toàn `src`; pwsh `Get-Content` đọc mặc định theo ANSI nên văn bản UTF-8 tiếng Việt bị hỏng kép khi qua Set-Content — sửa bằng round-trip bytes windows-1252→UTF-8 và luôn chỉ định `-Encoding UTF8`.
 
+- **Điều chỉnh SRS (yêu cầu user 2026-10-02):** bảng ôn tập ngắt quãng đổi thành **1→3→7→14→30** (trước: 1/2/4/7/15/30) — `SrsIntervals` + §6.3 spec + `SrsIntervalsTest` mới (3 test chốt bảng); unit cũ chỉ chốt biên 1 và cap 30 nên không phải sửa. Lần verify IT tiếp theo của user sẽ kiểm chứng lại `ReviewFlowIT` với bảng mới.
+
+## Đợt 12 — Phase 6: review SRS và cleanup (2026-10-01)
+
+**Trạng thái: ĐÃ NGHIỆM THU (2026-10-02)** — user chạy `clean verify` trên MySQL: unit 227/0 lỗi + jacoco ≥80%, IT 38/38 xanh (2 log "Cache write race" là hành vi kỳ vọng của race test). Fix 1 assertion `ReviewFlowIT:97` (so `next_review` từng nano giây → biên độ ±5s vì MySQL `DATETIME(6)` làm tròn micro giây). SRS đổi bảng thành **1→3→7→14→30** theo yêu cầu user 2026-10-02 (mục điều chỉnh dưới Đợt 11).
+
+- **Review SRS** (`§4.1` row 11, `§6.3`): `POST /api/words/review` — `ReviewForm(wordIds @NotEmpty List≤100)`; `WordServiceImpl.review` chạy trong **một** transaction: khoá bi quan `findOwnedForUpdate(userId, distinct ids)` (giống mẫu ownership DELETE — thiếu/khác chủ → `OwnershipDeniedException.review()` 403 "Không có quyền ôn tập…"), đếm `reviewedCount` = số **distinct** id, mỗi từ `scheduleReview(count+1, now + SrsIntervals.intervalFor(count+1))` (thang 1/3/7/14/30 ngày sau điều chỉnh, chặn trần 30d); response `ReviewResultResponse(reviewedCount)` 200. **Toàn bộ hoặc không**: một id lạ giữa danh sách → rollback cả batch (chỉ một DELETE/UPDATE nhầm là đủ mất dữ liệu ôn tập).
+- **Cleanup** (`§6.4`): `TokenCleanupService.cleanupExpiredTokens()` xoá refresh token hết hạn (`deleteAllExpiredBefore(now)`); scheduled `@Scheduled(cron = "${app.cleanup.cron:0 0 3 * * *}")`, bật/tắt `app.cleanup.enabled` (default true) — tắt trong dev/test để không nhiễu log.
+- **Test**: `WordServiceImplTest` +3 (dedupe + SRS biên count 6→7 = +30d, id lạ → 403 + rollback), `WordControllerTest` +3 (200 distinct count, 403 message, 400 "Thông tin không hợp lệ"), `TokenCleanupServiceTest` +2, `ReviewFlowIT` +3 (persist +1d, rollback giữ nguyên state, leo thang SRS 8 lượt giữ trần 30d). Tổng **224 unit** 0 lỗi + jacoco ≥80% (`verify -DskipITs` EXIT=0 trong phiên); IT chạy bởi user trên MySQL theo `HUONG_DAN_TEST_MYSQL.md` §3.
+
 ## Các đợt tiếp theo
 
 - [x] **Phase 0.2:** cấu hình application, properties được validate, Clock UTC và unit tests cấu hình.
@@ -371,7 +381,7 @@ Bài học kỹ thuật: một lượt gọi tool có thể bị gateway chèn c
 - [x] **Phase 3: ĐÃ NGHIỆM THU (2026-09-30)** — words CRUD, ownership bản ghi con và due-count; 174 unit + 29 IT (8 WordFlowIT trên MySQL local) 0 lỗi, chạy `clean verify` đầy đủ trong phiên (mục Đợt 9).
 - [x] **Phase 4: ĐÃ NGHIỆM THU (2026-10-01)** — AI adapter, sinh nghĩa và cache race; 214 unit + 32 IT (trong đó 3 WordGenerateFlowIT trên MySQL local) 0 lỗi, chạy `clean verify` đầy đủ (mục Đợt 10). Nghiệm thu kèm thay đổi yêu cầu: nhận **cụm từ** 1–5 từ (make up, get along with) — prompt + regex + message 400 + docs §4.1/§7 đã cập nhật cùng lượt.
 - [x] **Phase 5: ĐÃ NGHIỆM THU (2026-10-01)** — grading và phrases; 210 unit + 35 IT (trong đó 3 `PhraseFlowIT` trên MySQL local) 0 lỗi, chạy `clean verify` đầy đủ (mục Đợt 11). Nghiệm thu kèm một lỗi thật do IT phát hiện: `PhraseTxServiceImpl.save` từng đọc `score` khi `validPhrase=false` (NPE) — đã thêm guard 400 ở ranh giới tx; 1 lỗi assertion IT sửa cùng lượt.
-- [ ] **Phase 6:** review SRS và cleanup.
+- [x] **Phase 6: ĐÃ NGHIỆM THU (2026-10-02)** — review SRS và cleanup. 227 unit + 38 IT (MySQL) 0 lỗi; bảng SRS điều chỉnh 1→3→7→14→30 theo yêu cầu user; SRS ladder đã nghiệm thu kèm Đợt 12.
 - [ ] **Phase 7:** integration end-to-end, tài liệu API và vận hành backend. Bao gồm nợ DoD Phase 2: IT chứng minh row refresh bị xoá thật (commit), token mới khác token cũ trong cùng giây, token cũ dùng lại thất bại, hai refresh đồng thời chỉ một thành công (§5.2:243).
 
 Không triển khai Android. Đợt 1 chưa tạo endpoint, entity, migration, hoặc cấu hình production.

@@ -4,8 +4,10 @@ import com.example.english_app_cdcntt.config.UserPrincipal;
 import com.example.english_app_cdcntt.dto.DueCountResponse;
 import com.example.english_app_cdcntt.dto.GeneratedWordDto;
 import com.example.english_app_cdcntt.dto.MessageResponse;
+import com.example.english_app_cdcntt.dto.ReviewResultResponse;
 import com.example.english_app_cdcntt.dto.SuccessResponse;
 import com.example.english_app_cdcntt.dto.WordDto;
+import com.example.english_app_cdcntt.form.ReviewForm;
 import com.example.english_app_cdcntt.form.WordForm;
 import com.example.english_app_cdcntt.service.GenerateService;
 import com.example.english_app_cdcntt.service.WordService;
@@ -25,10 +27,9 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * The word endpoints of §4.1 rows 5–10. Thin by design: it only moves data between the
+ * The word endpoints of §4.1 rows 5–11. Thin by design: it only moves data between the
  * contract shapes and the services, and the owner id always comes from the authenticated
- * principal (§5.3) — never from the request. {@code POST /api/words/review} (row 11)
- * arrives in Phase 6.
+ * principal (§5.3) — never from the request.
  */
 @RestController
 @RequestMapping("/api/words")
@@ -54,6 +55,17 @@ public class WordController {
     @GetMapping("/due-count")
     DueCountResponse dueCount(@AuthenticationPrincipal UserPrincipal principal) {
         return wordService.countDue(principal.id());
+    }
+
+    /**
+     * §4.1 row 11 — confirm an SRS review batch. Duplicates inside {@code wordIds} are allowed and
+     * deduplicated by the service; any foreign id fails the whole batch with 403 and no partial
+     * update survives (§6.3 rollback rule).
+     */
+    @PostMapping("/review")
+    ReviewResultResponse review(@AuthenticationPrincipal UserPrincipal principal,
+            @Valid @RequestBody ReviewForm form) {
+        return wordService.review(principal.id(), form);
     }
 
     /**

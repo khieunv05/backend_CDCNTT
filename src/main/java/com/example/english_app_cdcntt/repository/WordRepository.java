@@ -3,6 +3,7 @@ package com.example.english_app_cdcntt.repository;
 import com.example.english_app_cdcntt.entity.Word;
 import jakarta.persistence.LockModeType;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
@@ -52,6 +53,15 @@ public interface WordRepository extends JpaRepository<Word, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select w from Word w where w.id = :wordId and w.user.id = :userId")
     Optional<Word> findOwnedForUpdate(@Param("wordId") Long wordId, @Param("userId") Long userId);
+
+    /**
+     * §6.3:292 — batch row lock for the review transaction. Rows are returned (and locked by
+     * InnoDB) in ascending id order so concurrent batches touching the same words always acquire
+     * the locks in the same sequence — no deadlock, no lost update.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select w from Word w where w.user.id = :userId and w.id in :ids order by w.id asc")
+    List<Word> findOwnedForUpdate(@Param("userId") Long userId, @Param("ids") Collection<Long> ids);
 
     boolean existsByUser_IdAndEnglish(Long userId, String english);
 }

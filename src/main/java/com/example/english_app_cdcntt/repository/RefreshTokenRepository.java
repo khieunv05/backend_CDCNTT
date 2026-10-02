@@ -34,8 +34,8 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, Long
     @Query("delete from RefreshToken t where t.token = :token")
     int deleteByTokenValue(@Param("token") String token);
 
-    /** Scheduled cleanup of expired sessions. */
+    /** Scheduled cleanup; §9.1 boundary is inclusive — a token expiring exactly now is dead. */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
-    @Query("delete from RefreshToken t where t.expiryDate < :cutoff")
+    @Query("delete from RefreshToken t where t.expiryDate <= :cutoff")
     int deleteAllExpiredBefore(@Param("cutoff") Instant cutoff);
 }

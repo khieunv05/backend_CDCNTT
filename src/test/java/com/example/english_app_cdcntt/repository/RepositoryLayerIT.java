@@ -218,13 +218,15 @@ class RepositoryLayerIT {
     void deleteAllExpiredBeforeRemovesOnlyExpiredTokens() {
         refreshTokenRepository.saveAndFlush(RefreshToken.create(alice, "old-" + RUN_ID, NOW.minusSeconds(86_400)));
         refreshTokenRepository.saveAndFlush(RefreshToken.create(alice, "edge-" + RUN_ID, NOW.minusSeconds(1)));
+        // §9.1 — the boundary is inclusive: a token expiring exactly at the cutoff is already dead.
+        refreshTokenRepository.saveAndFlush(RefreshToken.create(alice, "at-cutoff-" + RUN_ID, NOW));
         RefreshToken alive =
                 refreshTokenRepository.saveAndFlush(RefreshToken.create(alice, "live-" + RUN_ID, NOW.plusSeconds(86_400)));
         Long aliveId = alive.getId();
 
         int deleted = refreshTokenRepository.deleteAllExpiredBefore(NOW);
 
-        assertThat(deleted).isEqualTo(2);
+        assertThat(deleted).isEqualTo(3);
         assertThat(refreshTokenRepository.findByUser_Id(alice.getId()))
                 .extracting(RefreshToken::getId)
                 .containsExactly(aliveId);

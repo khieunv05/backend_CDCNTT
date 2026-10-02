@@ -1,9 +1,11 @@
 package com.example.english_app_cdcntt.service;
 
 import com.example.english_app_cdcntt.dto.DueCountResponse;
+import com.example.english_app_cdcntt.dto.ReviewResultResponse;
 import com.example.english_app_cdcntt.dto.WordDto;
 import com.example.english_app_cdcntt.exception.DuplicateWordException;
 import com.example.english_app_cdcntt.exception.OwnershipDeniedException;
+import com.example.english_app_cdcntt.form.ReviewForm;
 import com.example.english_app_cdcntt.form.WordForm;
 import java.util.List;
 
@@ -43,4 +45,15 @@ public interface WordService {
      * @throws OwnershipDeniedException when the word is missing or owned by somebody else (403)
      */
     void deleteWord(Long userId, Long wordId);
+
+    /**
+     * §6.3 — confirms one review batch: distinct ids are locked in ascending order inside a single
+     * transaction, every reviewed word increments {@code reviewCount} and reschedules
+     * {@code nextReview} on the fixed SRS table. Not idempotent — each call schedules the next
+     * round. All ids are owned by the caller (the controller derives them from the principal).
+     *
+     * @throws OwnershipDeniedException when any id is missing or foreign — the whole batch rolls
+     *                                  back, no word is partially updated
+     */
+    ReviewResultResponse review(Long userId, ReviewForm form);
 }

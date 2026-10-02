@@ -1,17 +1,20 @@
 package com.example.english_app_cdcntt.service.impl;
 
 import com.example.english_app_cdcntt.dto.DueCountResponse;
+import com.example.english_app_cdcntt.dto.ReviewResultResponse;
 import com.example.english_app_cdcntt.dto.WordDto;
 import com.example.english_app_cdcntt.entity.Word;
 import com.example.english_app_cdcntt.entity.WordValue;
 import com.example.english_app_cdcntt.exception.DuplicateWordException;
 import com.example.english_app_cdcntt.exception.InvalidRequestException;
 import com.example.english_app_cdcntt.exception.OwnershipDeniedException;
+import com.example.english_app_cdcntt.form.ReviewForm;
 import com.example.english_app_cdcntt.form.WordForm;
 import com.example.english_app_cdcntt.form.WordValueForm;
 import com.example.english_app_cdcntt.mapper.WordMapper;
 import com.example.english_app_cdcntt.repository.UserRepository;
 import com.example.english_app_cdcntt.repository.WordRepository;
+import com.example.english_app_cdcntt.service.SrsIntervals;
 import com.example.english_app_cdcntt.service.WordService;
 import java.time.Clock;
 import java.time.Instant;
@@ -140,6 +143,24 @@ public class WordServiceImpl implements WordService {
     private static WordValue toEntity(WordValueForm form) {
         return WordValue.create(form.vietnamese(), form.example(), form.exampleTranslation(),
                 form.pronunciation(), form.partOfSpeech());
+    }
+
+    @Override
+    @Transactional
+    public ReviewResultResponse review(Long userId, ReviewForm form) {
+        // §6.3:292 — dedupe first, the count contract counts distinct ids only.
+        List<Long> distinctIds = form.wordIds().stream().distinct().toList();
+        List<Word> words = wordRepository.findOwnedForUpdate(userId, distinctIds);
+        // §6.3:294 — any foreign/unknown id rejects the WHOLE batch before the first mutation;
+        // the transaction rolls back so no word is half-reviewed.
+        if (words.size() != distinctIds.size()) {
+            throw OwnershipDeniedException.review();
+        }
+        Instant now = now();
+        // §6.3:295 — reviewCount++ then reschedule on the fixed SRS table (§6.3:296–298).
+        words.forEach(word -> word.scheduleReview(word.getReviewCount() + 1,
+                SrsIntervals.nextReview(word.getReviewCount() + 1, now)));
+        return new ReviewResultResponse(words.size());
     }
 
     /** §2.1:58 — one normalized key for lookup, duplicate check and storage. */

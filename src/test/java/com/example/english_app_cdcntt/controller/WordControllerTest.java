@@ -18,6 +18,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.example.english_app_cdcntt.config.UserPrincipal;
 import com.example.english_app_cdcntt.dto.DueCountResponse;
 import com.example.english_app_cdcntt.dto.GeneratedWordDto;
+import com.example.english_app_cdcntt.dto.ReviewResultResponse;
 import com.example.english_app_cdcntt.dto.WordDto;
 import com.example.english_app_cdcntt.dto.WordValueDto;
 import com.example.english_app_cdcntt.enums.Level;
@@ -30,6 +31,7 @@ import com.example.english_app_cdcntt.exception.AiServiceException;
 import org.springframework.security.web.method.annotation.AuthenticationPrincipalArgumentResolver;
 import com.example.english_app_cdcntt.exception.OwnershipDeniedException;
 import com.example.english_app_cdcntt.form.WordForm;
+import com.example.english_app_cdcntt.form.ReviewForm;
 import com.example.english_app_cdcntt.form.WordValueForm;
 import com.example.english_app_cdcntt.service.GenerateService;
 import com.example.english_app_cdcntt.service.WordService;
@@ -334,5 +336,43 @@ class WordControllerTest {
                 .andExpect(jsonPath("$.message").value("Thông tin không hợp lệ"));
 
         verifyNoInteractions(generateService, wordService);
+    }
+
+    @Test
+    @DisplayName("review: 200 + distinct updatedCount from the service (§4.1 row 11)")
+    void review_answers200WithDistinctCount() throws Exception {
+        when(wordService.review(eq(USER_ID), any(ReviewForm.class)))
+                .thenReturn(new ReviewResultResponse(2));
+
+        mockMvc.perform(post("/api/words/review")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"wordIds\":[7,7,9]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reviewedCount").value(2));
+    }
+
+    @Test
+    @DisplayName("review: a foreign or unknown id answers 403 with the §4.1 text")
+    void review_foreignId_answers403() throws Exception {
+        when(wordService.review(eq(USER_ID), any(ReviewForm.class)))
+                .thenThrow(OwnershipDeniedException.review());
+
+        mockMvc.perform(post("/api/words/review")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"wordIds\":[7]}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("Không có quyền với từ không thuộc sở hữu"));
+    }
+
+    @Test
+    @DisplayName("review: empty wordIds answers 400 before touching the service")
+    void review_emptyIds_answers400() throws Exception {
+        mockMvc.perform(post("/api/words/review")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"wordIds\":[]}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Thông tin không hợp lệ"));
+
+        verifyNoInteractions(wordService);
     }
 }

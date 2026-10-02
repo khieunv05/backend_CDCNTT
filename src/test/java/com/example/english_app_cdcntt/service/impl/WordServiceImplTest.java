@@ -19,12 +19,15 @@ import com.example.english_app_cdcntt.enums.Level;
 import com.example.english_app_cdcntt.enums.PartOfSpeech;
 import com.example.english_app_cdcntt.exception.DuplicateWordException;
 import com.example.english_app_cdcntt.exception.InvalidRequestException;
+import com.example.english_app_cdcntt.dto.ReviewResultResponse;
 import com.example.english_app_cdcntt.exception.OwnershipDeniedException;
+import com.example.english_app_cdcntt.form.ReviewForm;
 import com.example.english_app_cdcntt.form.WordForm;
 import com.example.english_app_cdcntt.form.WordValueForm;
 import com.example.english_app_cdcntt.repository.UserRepository;
 import com.example.english_app_cdcntt.repository.WordRepository;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -205,6 +208,48 @@ class WordServiceImplTest {
 
         assertThat(dto.english()).isEqualTo("hello");
         verify(wordRepository, never()).existsByUser_IdAndEnglish(any(), anyString());
+    }
+
+    @Test
+    @DisplayName("§6.3 — review dedupes ids, locks and schedules every owned word")
+    void reviewDedupesIdsAndSchedulesOwnedWords() {
+        Word first = word(1L, "hello", value(1L, "xin chào"));
+        Word second = word(2L, "world", value(2L, "thế giới"));
+        when(wordRepository.findOwnedForUpdate(USER_ID, List.of(1L, 2L)))
+                .thenReturn(List.of(first, second));
+
+        ReviewResultResponse result = wordService.review(USER_ID, new ReviewForm(List.of(1L, 2L, 1L, 2L)));
+
+        assertThat(result.reviewedCount()).isEqualTo(2);
+        assertThat(first.getReviewCount()).isEqualTo(1);
+        assertThat(first.getNextReview()).isEqualTo(NOW.plus(Duration.ofDays(1)));
+        assertThat(second.getReviewCount()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("§6.3 — one foreign/unknown id rejects the whole batch with 403")
+    void reviewForeignWordFailsWholeBatch() {
+        Word first = word(1L, "hello", value(1L, "xin chào"));
+        when(wordRepository.findOwnedForUpdate(USER_ID, List.of(1L, 99L)))
+                .thenReturn(List.of(first));
+
+        assertThatThrownBy(() -> wordService.review(USER_ID, new ReviewForm(List.of(1L, 99L))))
+                .isInstanceOf(OwnershipDeniedException.class)
+                .hasMessage("Không có quyền với từ không thuộc sở hữu");
+        assertThat(first.getReviewCount()).isZero();
+    }
+
+    @Test
+    @DisplayName("§6.3 — SRS table: 6th review jumps to the 30-day ceiling")
+    void reviewSrsCeilingAfterSixReviews() {
+        Word sixth = word(1L, "hello", value(1L, "xin chào"));
+        sixth.scheduleReview(6, NOW.minus(Duration.ofDays(30)));
+        when(wordRepository.findOwnedForUpdate(USER_ID, List.of(1L))).thenReturn(List.of(sixth));
+
+        wordService.review(USER_ID, new ReviewForm(List.of(1L)));
+
+        assertThat(sixth.getReviewCount()).isEqualTo(7);
+        assertThat(sixth.getNextReview()).isEqualTo(NOW.plus(Duration.ofDays(30)));
     }
 
 // TESTS2
