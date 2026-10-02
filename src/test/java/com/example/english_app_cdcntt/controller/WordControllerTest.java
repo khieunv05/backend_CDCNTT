@@ -375,4 +375,29 @@ class WordControllerTest {
 
         verifyNoInteractions(wordService);
     }
+
+    @Test
+    void review_nullElement_answers400() throws Exception {
+        mockMvc.perform(post("/api/words/review")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"wordIds\":[7,null]}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Thông tin không hợp lệ"));
+
+        verifyNoInteractions(wordService);
+    }
+
+    @Test
+    void review_overLimit_answers400() throws Exception {
+        String ids = java.util.stream.LongStream.rangeClosed(1, 501)
+                .mapToObj(Long::toString)
+                .collect(java.util.stream.Collectors.joining(",", "[", "]"));
+        mockMvc.perform(post("/api/words/review")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"wordIds\":" + ids + "}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Thông tin không hợp lệ"));
+
+        verifyNoInteractions(wordService);
+    }
 }

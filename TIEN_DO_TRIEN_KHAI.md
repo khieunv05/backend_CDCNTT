@@ -343,6 +343,16 @@ Bài học kỹ thuật: chuỗi builder `putObject(...).put(...)` kết thúc �
 
 ## Đợt 11 — Phase 5: grading và phrases (2026-10-01)
 
+**Audit 2026-10-02 (sau nghiệm thu) — Phase 6:** đối chiếu §4.1 row 11, §6.3/§6.4, §9.1, §12, §13.7 với code:
+
+- **§13.7 từ mới due ngay — CODE ĐÚNG** (`Word.create(..., now())`, `reviewCount=0`); lần trước tôi giải thích nhầm "now+1d" với user, đã đính chính.
+- §6.3:291 `wordIds` ≤500 + `@Positive`/`@NotNull` phần tử ✓; distinct trước query ✓; khóa batch `findOwnedForUpdate(userId, ids)` ORDER BY id ASC ✓; count lệch → 403 rollback ✓; `updatedAt` tự set qua `@LastModifiedDate` ✓.
+- §6.4/§9.1 cleanup: cron 3h UTC, `expiry_date <= now` bao biên, xóa thật commit ✓ (RepositoryLayerIT trước/bằng/sau).
+- **Sửa thêm:** §12:526 đổi "SRS đủ 6 mốc" → "5 mốc (1→3→7→14→30)"; bổ sung 2 test biên review thiếu (phần tử null, >500 ids) — WordControllerTest 20 test.
+- **Gap đã ghi nhận (không sửa):** IT review concurrent thật (2 tx đan xen) chưa có — unit test đã chốt dùng `findOwnedForUpdate` (khóa bi quan), ngữ nghĩa khóa hàng InnoDB tin cậy từ Phase 3; đề xuất giữ nguyên, cân nhắc thêm ở Phase 7 nếu cần.
+
+Kết quả: unit 229/0 lỗi, `verify -DskipITs` + jacoco xanh. SRS xác nhận đã là bảng 1→3→7→14→30 (SrsIntervals + SrsIntervalsTest).
+
 **Audit 2026-10-01 (sau nghiệm thu) — ĐÃ XÁC NHẬN trên MySQL:** đối chiếu §8.1/§8.2/§12 với code, sửa 4 lệch:
 1. `GradingResult` bỏ `validPhrase` — đúng hợp đồng §8.2:348 `(int score, String correctedText, List<GradingError>)`; cờ chuyển về adapter (`LlmAiClient.parseGrading` ném `InvalidPhraseException` khi `validPhrase=false`), bỏ guard ở `PhraseTxServiceImpl`.
 2. GET /api/phrases đổi `OrderByCreatedAtDesc` → `OrderByIdAsc` (§8.1 yêu cầu id ASC).
@@ -372,6 +382,17 @@ Bài học kỹ thuật: một lượt gọi tool có thể bị gateway chèn c
 - **Cleanup** (`§6.4`): `TokenCleanupService.cleanupExpiredTokens()` xoá refresh token hết hạn (`deleteAllExpiredBefore(now)`); scheduled `@Scheduled(cron = "${app.cleanup.cron:0 0 3 * * *}")`, bật/tắt `app.cleanup.enabled` (default true) — tắt trong dev/test để không nhiễu log.
 - **Test**: `WordServiceImplTest` +3 (dedupe + SRS biên count 6→7 = +30d, id lạ → 403 + rollback), `WordControllerTest` +3 (200 distinct count, 403 message, 400 "Thông tin không hợp lệ"), `TokenCleanupServiceTest` +2, `ReviewFlowIT` +3 (persist +1d, rollback giữ nguyên state, leo thang SRS 8 lượt giữ trần 30d). Tổng **224 unit** 0 lỗi + jacoco ≥80% (`verify -DskipITs` EXIT=0 trong phiên); IT chạy bởi user trên MySQL theo `HUONG_DAN_TEST_MYSQL.md` §3.
 
+## Đợt 14 — Phase 7: nghiệm thu và vận hành backend (2026-10-02)
+
+**Trạng thái: CHỜ NGƯỜI DÙNG CHẠY `clean verify` TRÊN MYSQL** — trong phiên đã đạt test-compile EXIT=0 và unit suite `test` EXIT=0 (BUILD SUCCESS). Đã viết 2 lớp IT mới (15 + 5 test) cần MySQL local để chạy thật.
+
+- **`ApiEndToEndIT`** (15 test @Order, HTTP thật RESTful + JWT thật, MySQL, `@MockitoBean AiService`): kịch bản §11 Phase 7 register→login→generate→tạo từ→due-count→review→due-count giảm→list→update→phrase chấm điểm→xoá phrase→logout→refresh bị từ chối→đối chiếu DB cuối (đủ 14 endpoint trừ generate? có — generate qua stub); logout xác nhận **xoá row thật (commit)** bằng JdbcTemplate từ transaction mới sau request.
+- **`RefreshRotationIT`** (5 test @Order) — **trả nợ DoD Phase 2 (§5.2:243)**: hai login phát hành trong cùng giây vẫn cho token pair khác nhau (jti `UUID.randomUUID()`); refresh rotation cấp token mới + xoá row cũ (1 row/user sau rotate); token cũ dùng lại → 401; **hai refresh đồng thời cùng token cũ → đúng một 200, một 401** (PESSIMISTIC_WRITE serialize, dùng `java.net.http.HttpClient` + latch). 
+- **`API_REFERENCE.md`** — tài liệu tham chiếu 14 endpoint: envelope shapes (`SuccessResponse{message,data}`, `MessageResponse`, `ErrorResponse` + `FieldErrorDetail`), bảng endpoint, mẫu request/response cURL+JSON, bảng lỗi 400/401/403/409/502, biến môi trường.
+- **`README.md`** — hướng dẫn vận hành: JDK 21, biến môi trường (`DB_*`, `JWT_SECRET` ≥32 byte, `AI_API_KEY`, `AI_BASE_URL`, `AI_MODEL`, `app.cleanup.*`), build/migrate Flyway/test/chạy JAR, JWT 30m/7d, SRS 1→3→7→14→30, phần bảo mật §14.
+- **Audit secrets/log §14.1–§14.2:** mọi secret qua `${ENV}` placeholder (`application.yml` không có default), không log password/token/đoạn văn (english được redact trong log generate, AI chỉ log status/type/correlationId, cleanup chỉ log số lượng); `.gitignore` thêm `.env`/`.env.*` (giữ `!.env.example`). Không dùng thư viện mới (OpenAPI tùy chọn — bỏ qua).
+- Fix khớp hợp đồng thật khi rà soát E2E: `WordForm`/`WordValueForm`/`GeneratedWordDto` dùng `vietnamese` (không phải `value`) + `level` trên form; GET list trả bare list (không envelope) và `OrderByIdAsc` nên assert vị trí ổn định.
+
 ## Các đợt tiếp theo
 
 - [x] **Phase 0.2:** cấu hình application, properties được validate, Clock UTC và unit tests cấu hình.
@@ -382,7 +403,7 @@ Bài học kỹ thuật: một lượt gọi tool có thể bị gateway chèn c
 - [x] **Phase 4: ĐÃ NGHIỆM THU (2026-10-01)** — AI adapter, sinh nghĩa và cache race; 214 unit + 32 IT (trong đó 3 WordGenerateFlowIT trên MySQL local) 0 lỗi, chạy `clean verify` đầy đủ (mục Đợt 10). Nghiệm thu kèm thay đổi yêu cầu: nhận **cụm từ** 1–5 từ (make up, get along with) — prompt + regex + message 400 + docs §4.1/§7 đã cập nhật cùng lượt.
 - [x] **Phase 5: ĐÃ NGHIỆM THU (2026-10-01)** — grading và phrases; 210 unit + 35 IT (trong đó 3 `PhraseFlowIT` trên MySQL local) 0 lỗi, chạy `clean verify` đầy đủ (mục Đợt 11). Nghiệm thu kèm một lỗi thật do IT phát hiện: `PhraseTxServiceImpl.save` từng đọc `score` khi `validPhrase=false` (NPE) — đã thêm guard 400 ở ranh giới tx; 1 lỗi assertion IT sửa cùng lượt.
 - [x] **Phase 6: ĐÃ NGHIỆM THU (2026-10-02)** — review SRS và cleanup. 227 unit + 38 IT (MySQL) 0 lỗi; bảng SRS điều chỉnh 1→3→7→14→30 theo yêu cầu user; SRS ladder đã nghiệm thu kèm Đợt 12.
-- [ ] **Phase 7:** integration end-to-end, tài liệu API và vận hành backend. Bao gồm nợ DoD Phase 2: IT chứng minh row refresh bị xoá thật (commit), token mới khác token cũ trong cùng giây, token cũ dùng lại thất bại, hai refresh đồng thời chỉ một thành công (§5.2:243).
+- [ ] **Phase 7: ĐÃ TRIỂN KHAI (2026-10-02), chờ nghiệm thu** — ApiEndToEndIT (15 test) + RefreshRotationIT (5 test, trả nợ DoD Phase 2 §5.2:243) + API_REFERENCE.md + README.md + audit §14; unit xanh trong phiên, chờ user chạy `clean verify` MySQL (mục Đợt 14).
 
 Không triển khai Android. Đợt 1 chưa tạo endpoint, entity, migration, hoặc cấu hình production.
 

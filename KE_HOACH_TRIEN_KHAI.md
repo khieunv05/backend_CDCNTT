@@ -523,7 +523,7 @@ logging.level.com.example.english_app_cdcntt: INFO
 - Refresh thiếu/sai type/tampered/expired/reuse; xóa expired thực sự commit; concurrent rotation; token phát hành cùng giây vẫn khác.
 - Scope user cho list/due-count; missing/foreign parent ID trả 403; foreign/duplicate child ID trả 400 và DB không thay đổi.
 - Chuẩn hóa `Hello`/` hello ` về cùng key; unique cache và unique sổ từ đúng phạm vi.
-- Due `nextReview == now`, UTC/precision; SRS đủ 6 mốc; review rỗng/null/quá giới hạn/ID lặp/mixed ownership/concurrent.
+- Due `nextReview == now`, UTC/precision; SRS đủ 5 mốc theo bảng điều chỉnh 1→3→7→14→30 (user 2026-10-02, thay mốc 6 cũ); review rỗng/null/phần tử null/quá giới hạn/ID lặp/mixed ownership/concurrent.
 - AI cache-hit không call; validWord false; validPhrase false; thiếu score/null/wrong type/out-of-range; timeout/429/5xx; không có row lỗi hoặc bản ghi mồ côi.
 - Cascade và orphanRemoval; phrase 5000 ký tự, correctedText dài hơn 255; field vượt giới hạn bị từ chối trước ghi DB.
 - Cleanup trước/bằng/sau expiry; protected API thiếu JWT; refresh token không dùng thay access token.
