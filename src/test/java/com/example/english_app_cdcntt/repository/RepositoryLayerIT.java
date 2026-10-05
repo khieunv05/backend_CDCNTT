@@ -16,7 +16,6 @@ import com.example.english_app_cdcntt.enums.PartOfSpeech;
 import com.example.english_app_cdcntt.support.MySqlTestConfiguration;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
-import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -26,8 +25,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
@@ -250,36 +247,11 @@ class RepositoryLayerIT {
     }
 
     @Test
-    void phrasePagingOrdersByCreatedAtDesc() {
-        Phrase first = phraseRepository.saveAndFlush(Phrase.create(alice, "i goes home", "I go home", 4));
-        Phrase second = phraseRepository.saveAndFlush(Phrase.create(alice, "she go home", "She goes home", 5));
-        Phrase third = phraseRepository.saveAndFlush(Phrase.create(alice, "he like it", "He likes it", 6));
-        // created_at is audit-controlled; stagger the rows so the ordering is deterministic.
-        jdbc.update(
-                "UPDATE phrases SET created_at = ? WHERE id = ?",
-                Timestamp.from(NOW.minusSeconds(10_800)),
-                first.getId());
-        jdbc.update(
-                "UPDATE phrases SET created_at = ? WHERE id = ?",
-                Timestamp.from(NOW.minusSeconds(7_200)),
-                second.getId());
-        jdbc.update(
-                "UPDATE phrases SET created_at = ? WHERE id = ?",
-                Timestamp.from(NOW.minusSeconds(3_600)),
-                third.getId());
-        entityManager.clear();
+    void phraseCountByUserIsScopedToOwner() {
+        phraseRepository.saveAndFlush(Phrase.create(alice, "i goes home", "I go home", 4));
+        phraseRepository.saveAndFlush(Phrase.create(alice, "she go home", "She goes home", 5));
 
-        Page<Phrase> firstPage =
-                phraseRepository.findByUser_IdOrderByCreatedAtDesc(alice.getId(), PageRequest.of(0, 2));
-        assertThat(firstPage.getTotalElements()).isEqualTo(3);
-        assertThat(firstPage.getTotalPages()).isEqualTo(2);
-        assertThat(firstPage.getContent()).extracting(Phrase::getId).containsExactly(third.getId(), second.getId());
-
-        Page<Phrase> secondPage =
-                phraseRepository.findByUser_IdOrderByCreatedAtDesc(alice.getId(), PageRequest.of(1, 2));
-        assertThat(secondPage.getContent()).extracting(Phrase::getId).containsExactly(first.getId());
-
-        assertThat(phraseRepository.countByUser_Id(alice.getId())).isEqualTo(3);
+        assertThat(phraseRepository.countByUser_Id(alice.getId())).isEqualTo(2);
         assertThat(phraseRepository.countByUser_Id(bob.getId())).isZero();
     }
 

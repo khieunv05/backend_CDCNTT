@@ -10,9 +10,14 @@ import org.springframework.core.io.ClassPathResource;
 
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.HashMap;
 import java.util.Map;
+
+import com.example.english_app_cdcntt.repository.RefreshTokenRepository;
+import com.example.english_app_cdcntt.service.TokenCleanupService;
+import org.mockito.Mockito;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -157,5 +162,18 @@ class ApplicationPropertiesTest {
             assertThat(environment.getProperty("spring.flyway.enabled", Boolean.class)).isTrue();
             assertThat(environment.getProperty("spring.flyway.baseline-on-migrate", Boolean.class)).isFalse();
         });
+    }
+
+    @Test
+    void cleanupEnabledFlag_shouldGateTokenCleanupServiceBean() {
+        ApplicationContextRunner serviceRunner = new ApplicationContextRunner()
+                .withUserConfiguration(TokenCleanupService.class)
+                .withBean("clock", Clock.class, () -> Clock.fixed(Instant.EPOCH, ZoneOffset.UTC))
+                .withBean(RefreshTokenRepository.class, () -> Mockito.mock(RefreshTokenRepository.class));
+
+        serviceRunner.withPropertyValues("app.cleanup.enabled=false")
+                .run(context -> assertThat(context).doesNotHaveBean(TokenCleanupService.class));
+        // Absent flag keeps the documented default (true) — bean is registered.
+        serviceRunner.run(context -> assertThat(context).hasSingleBean(TokenCleanupService.class));
     }
 }

@@ -5,6 +5,7 @@ import java.time.Clock;
 import java.time.Instant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,8 +14,14 @@ import org.springframework.transaction.annotation.Transactional;
  * §9.1 — daily cleanup of expired refresh tokens. The schedule comes from
  * application.yml (cron 03:00, zone UTC); the cutoff is taken from the injected
  * {@link Clock} so tests drive it with a fixed time (§12).
+ *
+ * <p>The {@code app.cleanup.enabled} flag (default {@code true}) gates the whole
+ * bean, so a {@code false} value in any profile (e.g. the test profile) also
+ * removes the {@code @Scheduled} registration — {@code @ConditionalOnProperty}
+ * is evaluated at bean registration time, not per tick.</p>
  */
 @Component
+@ConditionalOnProperty(name = "app.cleanup.enabled", havingValue = "true", matchIfMissing = true)
 public class TokenCleanupService {
 
     private static final Logger log = LoggerFactory.getLogger(TokenCleanupService.class);

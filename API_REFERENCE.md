@@ -6,9 +6,9 @@ Tất cả request/response body đều là JSON UTF-8.
 ## 1. Quy ước chung
 
 - **Base URL:** `http://<host>:<port>/api`
-- **Xác thực:** mọi endpoint trừ `/api/auth/register|login|refresh` đều yêu cầu header
+- **Xác thực:** mọi endpoint trừ `/api/auth/register|login|refresh|logout` đều yêu cầu header
   `Authorization: Bearer <accessToken>` (JWT HS256, claims `sub`, `uid`, `type`, `iat`, `exp`, `jti`).
-  Thiếu/sai token → **401**.
+  Thiếu/sai token → **401**. `/api/auth/logout` được permitAll — gọi được không cần token.
 - **Chủ sở hữu dữ liệu luôn lấy từ JWT** (`uid` trong principal), không bao giờ từ request (§5.3).
 
 ### 1.1. Bọc phản hồi thành công
@@ -52,7 +52,7 @@ Body: giống register. **200**:
 
 ### 2.3. Đăng xuất — `POST /api/auth/logout`
 
-Header cần Bearer token. Body:
+Không cần Bearer token (endpoint permitAll, không đọc principal). Body:
 ```json
 { "refreshToken": "eyJ..." }
 ```
@@ -92,8 +92,9 @@ Body: `{ "refreshToken": "eyJ..." }` (không cần Bearer).
 
 ### 3.3. Sinh nghĩa bằng AI — `GET /api/words/generate?english=serendipity`
 - Chấp nhận 1–5 từ (kể cụm động từ: `make up`, `get along with`); tự lower-case + gộp khoảng trắng.
-- **200** `GeneratedWordDto`: cùng shape `WordDto` nhưng **`id` không xuất hiện** và `values[].id` là null
-  (chưa lưu). **400** `Từ hoặc cụm từ gửi lên không phải một từ tiếng Anh hợp lệ` · **502** lỗi AI.
+- **200** `GeneratedWordDto`: chỉ gồm `english`, `level`, `values` (không có `id`, `reviewCount`,
+  `nextReview`, `createdAt`, `updatedAt`); `values[].id` là null (chưa lưu).
+  **400** `Từ hoặc cụm từ gửi lên không phải một từ tiếng Anh hợp lệ` · **502** lỗi AI.
 
 ### 3.4. Thêm từ — `POST /api/words`
 Body (từ 1–20 nghĩa, tối thiểu 1):
@@ -105,7 +106,7 @@ Body (từ 1–20 nghĩa, tối thiểu 1):
                 "exampleTranslation": "...", "pronunciation": "...", "partOfSpeech": "NOUN" } ]
 }
 ```
-`partOfSpeech` là tên enum: `NOUN`, `VERB`, `ADJECTIVE`, `ADVERB`, `PHRASE`, `OTHER`.
+`partOfSpeech` là tên enum: `NOUN`, `VERB`, `ADJECTIVE`, `ADVERB`, `PREPOSITION`, `CONJUNCTION`, `PRONOUN`, `INTERJECTION`.
 Từ mới có `reviewCount = 0` và `nextReview = createdAt` (đến hạn ôn ngay, §6.3).
 
 **201** `SuccessResponse<WordDto>`: `{ "message": "Thêm từ thành công", "data": WordDto }`
@@ -161,7 +162,7 @@ Body:
 ```
 - Ràng buộc: 10–5000 ký tự. AI chấm điểm rồi lưu `text + correctedText + score + errors` **nguyên tố**
   (một transaction; lỗi AI → không lưu gì).
-- `score` là số nguyên 1–5 do AI trả về.
+- `score` là số nguyên 0–10 do AI trả về.
 
 **201** `SuccessResponse<PhraseDto>`: `{ "message": "Thêm đoạn văn thành công", "data": PhraseDto }`
 **400** `{ "message": "Đoạn văn gửi lên không hợp lệ" }` · **502** lỗi AI.

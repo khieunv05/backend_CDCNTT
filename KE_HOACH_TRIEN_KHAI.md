@@ -134,26 +134,35 @@ public enum PartOfSpeech { NOUN, VERB, ADJECTIVE, ADVERB, PREPOSITION, CONJUNCTI
 
 ```text
 com.example.english_app_cdcntt
-├── controller/    AuthController, WordController, PhraseController
+├── controller/    AuthController, WordController, PhraseController, GlobalErrorController (/error)
 ├── form/          RegisterForm, LoginForm, LogoutForm, RefreshForm,
 │                  WordForm, WordValueForm, ReviewForm, PhraseForm
 ├── dto/           AuthResponse, MessageResponse, ValidationErrorResponse,
-│                  SuccessResponse<T>, WordDto, WordValueDto, GeneratedWordDto,
+│                  SuccessResponse<T>, ErrorResponse, FieldErrorDetail,
+│                  WordDto, WordValueDto, GeneratedWordDto,
 │                  DueCountResponse, ReviewResultResponse, PhraseDto, GrammarErrorDto
 ├── service/       AuthService, WordService, PhraseService, GradingService,
-│                  TokenCleanupService, AiClient
-├── service/impl/  Các implementation và LlmAiClient
-├── service/tx/    RefreshTokenTxService, WordCacheTxService, PhraseTxService
+│                  GenerateService, TokenCleanupService, SrsIntervals,
+│                  AiClient, WordCacheTxService, PhraseTxService
+├── service/impl/  AuthServiceImpl, WordServiceImpl, PhraseServiceImpl,
+│                  GenerateServiceImpl, GradingServiceImpl, LlmAiClient,
+│                  WordCacheTxServiceImpl, PhraseTxServiceImpl
+├── service/tx/    RegistrationTxService, RefreshTokenTxService, RefreshRotationResult
 ├── mapper/        WordMapper, WordCacheMapper, PhraseMapper
 ├── repository/    8 JpaRepository tương ứng 8 entity
 ├── entity/        User, Word, WordValue, WordCache, WordCacheValue,
 │                  Phrase, GrammarError, RefreshToken
 ├── config/        SecurityConfig, JwtService, JwtAuthenticationFilter,
 │                  JwtProperties, AiProperties, CleanupProperties,
-│                  AiClientConfig, JpaAuditingConfig, SchedulingConfig, ClockConfig
+│                  AiClientConfig, JpaAuditingConfig, SchedulingConfig, ClockConfig,
+│                  ApplicationPropertiesConfig, AppUserDetailsService, UserPrincipal,
+│                  TokenType, SecretValue, RestAuthenticationEntryPoint,
+│                  RestAccessDeniedHandler, SecurityErrorResponses
 ├── exception/     Các exception nghiệp vụ + GlobalExceptionHandler
 └── enums/         Level, PartOfSpeech
 ```
+
+*(Cập nhật sau đợt audit nghiệm thu để phản ánh bố cục thực tế: `WordCacheTxService`/`PhraseTxService` là interface trong `service/` + impl trong `service/impl/`; `service/tx/` giữ transaction biên đăng ký và refresh-rotation.)*
 
 - `ManyToOne(fetch=LAZY)` cho quan hệ đến cha. `OneToMany(mappedBy=..., cascade=ALL, orphanRemoval=true)` cho Word→WordValue, WordCache→WordCacheValue, Phrase→GrammarError.
 - Helper add/remove đồng bộ cả hai chiều quan hệ; khóa ngoại nằm trên bảng con, không tạo join table ngoài ERD.
@@ -382,7 +391,7 @@ record GradingError(String incorrect, String correction, String explanation) {}
 | Access token thiếu/sai/hết hạn | 401 | Token không hợp lệ hoặc hết hạn |
 | TokenExpiredException của refresh đã lưu | 401 | Phiên đăng nhập hết hạn |
 | AccessDeniedException của word/phrase/review | 403 | Message riêng theo §4.1 |
-| InvalidWordException | 400 | Từ gửi lên không phải một từ tiếng Anh |
+| InvalidWordException | 400 | Từ hoặc cụm từ gửi lên không phải một từ tiếng Anh hợp lệ |
 | InvalidPhraseException | 400 | Đoạn văn gửi lên không hợp lệ |
 | AiServiceException | 502 | Dịch vụ AI tạm thời không khả dụng |
 | Validation chung | 400 | Thông tin không hợp lệ + details[] |

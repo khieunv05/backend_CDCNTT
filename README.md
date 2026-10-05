@@ -10,7 +10,7 @@ trong `KE_HOACH_TRIEN_KHAI.md` (§4 API, §5 Bảo mật, §6 Nghiệp vụ, §7
   tra cứu từ điển nội bộ trước khi gọi AI; sổ từ theo từng user.
 - **Ôn tập:** lịch SRS bậc thang `{1, 3, 7, 14, 30}` ngày; ôn theo batch (tối đa 500, gộp id trùng,
   rollback toàn batch nếu có từ không thuộc sở hữu); đếm từ đến hạn.
-- **Đoạn văn:** gửi đoạn 10–5000 ký tự, AI chấm điểm 1–5 + trả danh sách lỗi
+- **Đoạn văn:** gửi đoạn 10–5000 ký tự, AI chấm điểm 0–10 + trả danh sách lỗi
   (câu sai → câu đúng → giải thích); lưu nguyên tố trong một transaction.
 - **Bảo mật:** JWT access 30 phút + refresh 7 ngày lưu DB (băm? không — chuỗi raw trong `refresh_tokens`,
   single-use, xóa khi logout), mật khẩu BCrypt, mọi truy vấn luôn scope theo user lấy từ JWT (§5.3).
@@ -25,7 +25,7 @@ trong `KE_HOACH_TRIEN_KHAI.md` (§4 API, §5 Bảo mật, §6 Nghiệp vụ, §7
 | Spring Boot | 4.1.1 (Spring Framework 7) |
 | MySQL | 8.x (`mysql-connector-j`) |
 | Flyway | migration `src/main/resources/db/migration` |
-| JJWT | 0.13.x (`jjwt-api`/`jjwt-impl`/`jjwt-jackson`) |
+| JJWT | 0.12.6 (`jjwt-api`/`jjwt-impl`/`jjwt-jackson`) |
 | Test | JUnit 5, Mockito, AssertJ, RestTestClient; surefire (unit) + failsafe (`*IT`, jacoco 0.8.13) |
 
 ## 3. Chạy dự án
@@ -72,7 +72,7 @@ Hai tầng, tách theo §13.8:
 
   `support/MySqlTestConfiguration` tự xác thực các biến trên và hủy chạy nếu sai/missing.
   `ApiEndToEndIT` khởi động toàn bộ app trên port ngẫu nhiên rồi bắn HTTP request theo đúng
-  thứ tự nghiệp vụ (đăng ký → từ → ôn → đoạn văn → logout), stub `AiService` bằng Mockito.
+  thứ tự nghiệp vụ (đăng ký → từ → ôn → đoạn văn → logout), stub `AiClient` bằng Mockito.
 
 Báo cáo coverage JaCoCo: `target/site/jacoco/index.html` (unit) và
 `target/site/jacoco-it/index.html` (integration).
@@ -81,12 +81,24 @@ Báo cáo coverage JaCoCo: `target/site/jacoco/index.html` (unit) và
 
 ```
 src/main/java/com/example/english_app_cdcntt/
-  config/      SecurityConfig, JwtProperties, AiProperties, CleanupProperties, AiClientConfig
-  controller/  AuthController, WordController, PhraseController
-  service/     AuthService, WordService, PhraseService, AiService (+ impl/, srs/)
-  repository/  UserRepository, WordRepository, WordValueRepository,
-               PhraseRepository, PhraseErrorRepository, RefreshTokenRepository
-  entity/      User, Word, WordValue, Phrase, PhraseError, RefreshToken
+  config/      SecurityConfig, JwtAuthenticationFilter, JwtService, JwtProperties,
+               AiProperties, AiClientConfig, CleanupProperties, AppUserDetailsService,
+               UserPrincipal, TokenType, RestAuthenticationEntryPoint, RestAccessDeniedHandler,
+               SecurityErrorResponses, ApplicationPropertiesConfig, ClockConfig,
+               JpaAuditingConfig, SchedulingConfig, SecretValue
+  controller/  AuthController, WordController, PhraseController, GlobalErrorController (/error)
+  service/     AuthService, WordService, PhraseService, GenerateService, GradingService,
+               AiClient (giao diện tích hợp AI), WordCacheTxService, PhraseTxService,
+               TokenCleanupService, SrsIntervals
+               + impl/ (AuthServiceImpl, WordServiceImpl, PhraseServiceImpl,
+               GenerateServiceImpl, GradingServiceImpl, LlmAiClient,
+               WordCacheTxServiceImpl, PhraseTxServiceImpl)
+               + tx/ (RegistrationTxService, RefreshTokenTxService — transaction biên)
+  repository/  UserRepository, WordRepository, WordValueRepository, WordCacheRepository,
+               WordCacheValueRepository, PhraseRepository, GrammarErrorRepository,
+               RefreshTokenRepository
+  entity/      User, Word, WordValue, WordCache, WordCacheValue, Phrase, GrammarError,
+               RefreshToken
   dto/ form/ mapper/ enums/ exception/ (GlobalExceptionHandler, ErrorResponse)
 src/test/java/com/example/english_app_cdcntt/
   unit: *Test          — service/logic thuần

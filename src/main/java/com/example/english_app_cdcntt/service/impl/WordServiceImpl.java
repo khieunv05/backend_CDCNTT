@@ -165,7 +165,7 @@ public class WordServiceImpl implements WordService {
 
     /** §2.1:58 — one normalized key for lookup, duplicate check and storage. */
     private static String normalize(String english) {
-        return english.strip().toLowerCase(Locale.ROOT);
+        return english.strip().toLowerCase(Locale.ROOT).replaceAll("\\s+", " ");
     }
 
     /** §2.1:56 — one {@code now} per operation, truncated to the DATETIME(6) precision. */
