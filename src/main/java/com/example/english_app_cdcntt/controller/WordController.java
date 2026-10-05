@@ -8,6 +8,7 @@ import com.example.english_app_cdcntt.dto.ReviewResultResponse;
 import com.example.english_app_cdcntt.dto.SuccessResponse;
 import com.example.english_app_cdcntt.dto.WordDto;
 import com.example.english_app_cdcntt.form.ReviewForm;
+import com.example.english_app_cdcntt.form.TopicConfirmForm;
 import com.example.english_app_cdcntt.form.TopicForm;
 import com.example.english_app_cdcntt.form.WordForm;
 import com.example.english_app_cdcntt.service.GenerateService;
@@ -40,6 +41,7 @@ public class WordController {
     static final String CREATE_SUCCESS_MESSAGE = "Thêm từ thành công";
     static final String UPDATE_SUCCESS_MESSAGE = "Sửa từ thành công";
     static final String DELETE_SUCCESS_MESSAGE = "Xóa từ thành công";
+    static final String TOPIC_GENERATED_MESSAGE = "Đã sinh từ theo chủ đề";
     static final String TOPIC_SUCCESS_MESSAGE = "Thêm từ theo chủ đề thành công";
 
     private final WordService wordService;
@@ -87,17 +89,32 @@ public class WordController {
     }
 
     /**
-     * §4.1 row 15 — act-20, add words by topic. The whole flow (AI topic check → AI proposal →
-     * one write transaction) lives in the service; this only carries the principal as the §5.3
-     * access gate. 400 when the AI rejects the topic, 502 on any AI failure — both before any
-     * DB change.
+     * §4.1 row 15 — act-20 step 1, PROPOSE words by topic. Only AI + shared cache: the
+     * notebook is untouched, so the same topic answer is reusable across users. The AI calls
+     * and cache writes live in the service (§13.12: the AI stays outside transactions).
+     * 400 when the AI rejects the topic, 502 on any AI failure — both before any DB change.
      */
     @PostMapping("/generate-topic")
-    @ResponseStatus(HttpStatus.CREATED)
-    SuccessResponse<List<WordDto>> generateTopic(@AuthenticationPrincipal UserPrincipal principal,
+    SuccessResponse<List<GeneratedWordDto>> generateTopic(
+            @AuthenticationPrincipal UserPrincipal principal,
             @Valid @RequestBody TopicForm form) {
-        return new SuccessResponse<>(TOPIC_SUCCESS_MESSAGE,
+        return new SuccessResponse<>(TOPIC_GENERATED_MESSAGE,
                 topicGenerateService.generateTopicWords(principal.id(), form.topic()));
+    }
+
+    /**
+     * §4.1 row 16 — act-20 step 2, CONFIRM the proposal screen's picked words into the
+     * notebook. Body: the English words the user kept; each is cache-first (a vanished cache
+     * row is re-asked to the AI) and the whole batch is one write transaction (§13.12).
+     * 400 for an invalid picked word, 502 on AI failure — both before any notebook change.
+     */
+    @PostMapping("/generate-topic/confirm")
+    @ResponseStatus(HttpStatus.CREATED)
+    SuccessResponse<List<WordDto>> confirmTopic(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @Valid @RequestBody TopicConfirmForm form) {
+        return new SuccessResponse<>(TOPIC_SUCCESS_MESSAGE,
+                topicGenerateService.confirmTopicWords(principal.id(), form.words()));
     }
 
     @PostMapping

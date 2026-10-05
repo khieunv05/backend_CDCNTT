@@ -1,6 +1,6 @@
 # LEnglish — API Reference (§4.1)
 
-Tài liệu tham chiếu cho **15 endpoint** của backend LEnglish (§4.1 bảng `KE_HOACH_TRIEN_KHAI.md`).
+Tài liệu tham chiếu cho **16 endpoint** của backend LEnglish (§4.1 bảng `KE_HOACH_TRIEN_KHAI.md`).
 Tất cả request/response body đều là JSON UTF-8.
 
 ## 1. Quy ước chung
@@ -135,7 +135,9 @@ Body:
 **200** `{ "reviewedCount": 2 }` — số từ **distinct** đã ghi nhận.
 **400** validation · **403** `{ "message": "Không có quyền với từ không thuộc sở hữu" }` (batch bị hủy hoàn toàn).
 
-### 3.8. Thêm từ theo chủ đề — `POST /api/words/generate-topic`
+### 3.8. Sinh từ theo chủ đề — `POST /api/words/generate-topic`
+
+Bước 1 của luồng 2 bước (act-20): **chỉ đề xuất và ghi cache, không đụng sổ từ**.
 
 Body:
 ```json
@@ -143,14 +145,31 @@ Body:
 ```
 - Ràng buộc: topic `@NotBlank`, tối đa 255 ký tự (chuẩn hóa: trim + gộp khoảng trắng).
 - Flow (§7.1): AI xác nhận chủ đề → đọc từ đã có trong sổ làm exclude → AI sinh 10 từ
-  (nghĩa, phiên âm, từ loại, ví dụ, level) → từng từ cache-first (`word_cache`/`word_cache_values`)
-  → lưu vào sổ **một transaction duy nhất**, mỗi từ mới có `reviewCount = 0` (đến hạn ôn ngay).
-- Từ trùng (đã có trong sổ hoặc trùng trong lô) **bị bỏ qua, không hủy cả lô**;
-  `UNIQUE (user_id, english)` là lớp chặn cuối.
+  (nghĩa, phiên âm, từ loại, ví dụ, level) → từng từ cache-first (`word_cache`/`word_cache_values`).
+- Từ đề xuất sai shape / trùng trong lô / đã có trong sổ **bị bỏ qua, không hủy cả lô**.
 
-**201** `SuccessResponse<List<WordDto>>`: `{ "message": "Thêm từ theo chủ đề thành công", "data": [WordDto] }`
+**200** `SuccessResponse<List<GeneratedWordDto>>`: `{ "message": "Đã sinh từ theo chủ đề", "data": [GeneratedWordDto] }`
+(id của từ là `null` — chưa thuộc sổ của ai)
 **400** `{ "message": "Chủ đề không được để trống" }` (validation) hoặc
 `{ "message": "Chủ đề không hợp lệ, vui lòng nhập lại" }` (AI từ chối chủ đề) · **502** lỗi AI.
+
+### 3.9. Thêm từ đã sinh vào sổ — `POST /api/words/generate-topic/confirm`
+
+Bước 2 của luồng 2 bước (act-20): người dùng xem màn hình đề xuất, chọn từ, rồi xác nhận —
+**lúc này mới ghi `word`/`word_value`**.
+
+Body:
+```json
+{ "words": ["airport", "hotel", "luggage"] }
+```
+- Ràng buộc: `words` 1–20 phần tử, mỗi phần tử tối đa 255 ký tự (chuẩn hóa như §2).
+- Flow (§13.12): mỗi từ cache-first — cache còn → dùng lại; cache mất (sự cố) → gọi AI sinh
+  nghĩa lại — sau đó **một transaction duy nhất** ghi vào sổ, mỗi từ mới có `reviewCount = 0`
+  (đến hạn ôn ngay). `UNIQUE (user_id, english)` là lớp chặn race cuối.
+- Từ đã có trong sổ hoặc trùng trong lô **bị bỏ qua, không hủy cả lô**.
+
+**201** `SuccessResponse<List<WordDto>>`: `{ "message": "Thêm từ theo chủ đề thành công", "data": [WordDto] }`
+**400** validation hoặc `{ "message": "Từ hoặc cụm từ gửi lên không phải một từ tiếng Anh hợp lệ" }` · **502** lỗi AI.
 
 ## 4. Đoạn văn — `/api/phrases`
 
@@ -203,9 +222,11 @@ curl -s -X POST http://localhost:8080/api/words -H "Authorization: Bearer $TOKEN
      -H "Content-Type: application/json" \
      -d '{"english":"serendipity","level":"B2","values":[{"vietnamese":"sự tình cờ may mắn"}]}'
 
-# 3) Thêm 10 từ theo chủ đề
+# 3) Sinh 10 từ theo chủ đề, xem đề xuất rồi xác nhận thêm vào sổ
 curl -s -X POST http://localhost:8080/api/words/generate-topic -H "Authorization: Bearer $TOKEN" \
      -H "Content-Type: application/json" -d '{"topic":"Du lịch"}'
+curl -s -X POST http://localhost:8080/api/words/generate-topic/confirm -H "Authorization: Bearer $TOKEN" \
+     -H "Content-Type: application/json" -d '{"words":["airport","hotel","luggage"]}'
 
 # 4) Ôn tập
 curl -s -X POST http://localhost:8080/api/words/review -H "Authorization: Bearer $TOKEN" \

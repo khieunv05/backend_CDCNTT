@@ -109,10 +109,10 @@
 <div class="hero">
   <div class="hero-inner">
     <h1><span class="logo">📘</span> LEnglish — API Reference</h1>
-    <p>Tài liệu 15 endpoint của backend: kiểu dữ liệu trả về, định dạng request và mã trạng thái cho từng đường dẫn.
+    <p>Tài liệu 16 endpoint của backend: kiểu dữ liệu trả về, định dạng request và mã trạng thái cho từng đường dẫn.
        Mọi request/response đều là <b>JSON UTF-8</b>.</p>
     <div class="stats">
-      <div class="stat"><b>15</b> endpoint</div>
+      <div class="stat"><b>16</b> endpoint</div>
       <div class="stat"><b>JWT HS256</b> Bearer auth</div>
       <div class="stat"><b>Base URL</b> /api</div>
       <div class="stat"><b>10</b> kiểu DTO</div>
@@ -361,20 +361,39 @@
 
   <div class="ep" id="w-generate-topic">
     <div class="ep-head"><span class="pill post">POST</span><span class="path">/api/words/generate-topic</span>
-      <span class="pill auth-pill">Bearer</span><span class="name">Thêm từ theo chủ đề — AI sinh 10 từ</span></div>
+      <span class="pill auth-pill">Bearer</span><span class="name">Sinh từ theo chủ đề — AI đề xuất 10 từ (chỉ cache)</span></div>
     <div class="ep-body">
       <div class="blk"><h4>Request body</h4>
         <table><tr><th>Trường</th><th>Kiểu</th><th>Ràng buộc</th></tr>
         <tr><td><code>topic</code></td><td><span class="k">string</span></td><td><code>@NotBlank</code>; tối đa 255 ký tự; chuẩn hóa trim + gộp khoảng trắng trước khi gửi AI</td></tr></table>
-        <div class="note" style="margin-top:10px">Flow (§7.1): AI xác nhận chủ đề → đọc từ đã có trong sổ làm <b>exclude</b> → AI sinh 10 từ (nghĩa, phiên âm, từ loại, ví dụ, level) → từng từ cache-first qua <code>word_cache</code>/<code>word_cache_values</code> → lưu vào sổ <b>một transaction duy nhất</b>. Từ mới có <code>reviewCount = 0</code>, <code>nextReview = createdAt</code> → đến hạn ôn <b>ngay</b>.</div></div>
+        <div class="note" style="margin-top:10px">Bước 1 của luồng 2 bước (§7.1): AI xác nhận chủ đề → đọc từ đã có trong sổ làm <b>exclude</b> → AI sinh 10 từ (nghĩa, phiên âm, từ loại, ví dụ, level) → từng từ cache-first qua <code>word_cache</code>/<code>word_cache_values</code>. <b>Không đụng sổ từ</b> — từ chưa thuộc sổ của ai, id trả về là <code>null</code>; user bấm "Thêm từ" mới ghi vào <code>word</code>/<code>word_value</code>.</div></div>
       <div class="blk ret"><h4>Response</h4>
-        <div class="ret-row"><span class="pill s-ok">201</span><div class="shape"><div class="t"><b>SuccessResponse&lt;List&lt;WordDto&gt;&gt;</b></div>
-          <pre>{ <span class="key">"message"</span>: <span class="s">"Thêm từ theo chủ đề thành công"</span>, <span class="key">"data"</span>: [ <span class="c">/* WordDto */</span> ] }</pre></div></div>
+        <div class="ret-row"><span class="pill s-ok">200</span><div class="shape"><div class="t"><b>SuccessResponse&lt;List&lt;GeneratedWordDto&gt;&gt;</b></div>
+          <pre>{ <span class="key">"message"</span>: <span class="s">"Đã sinh từ theo chủ đề"</span>, <span class="key">"data"</span>: [ <span class="c">/* GeneratedWordDto, id null */</span> ] }</pre></div></div>
         <div class="ret-row"><span class="pill s-400">400</span><div class="shape"><div class="t"><b>ValidationErrorResponse</b> — "Chủ đề không được để trống"</div></div></div>
         <div class="ret-row"><span class="pill s-400">400</span><div class="shape"><div class="t"><b>ErrorResponse</b> — "Chủ đề không hợp lệ, vui lòng nhập lại" (AI từ chối chủ đề)</div></div></div>
         <div class="ret-row"><span class="pill s-502">502</span><div class="shape"><div class="t"><b>ErrorResponse</b> — "Dịch vụ AI tạm thời không khả dụng"</div></div></div>
       </div>
-      <div class="note" style="margin:10px 12px">Từ trùng (đã có trong sổ hoặc trùng trong lô) <b>bị bỏ qua, không hủy cả lô</b>; <code>UNIQUE (user_id, english)</code> là lớp chặn cuối.</div>
+      <div class="note" style="margin:10px 12px">Từ đề xuất sai shape / trùng trong lô / đã có trong sổ <b>bị bỏ qua, không hủy cả lô</b>.</div>
+    </div>
+  </div>
+
+  <div class="ep" id="w-generate-topic-confirm">
+    <div class="ep-head"><span class="pill post">POST</span><span class="path">/api/words/generate-topic/confirm</span>
+      <span class="pill auth-pill">Bearer</span><span class="name">Thêm từ đã sinh vào sổ — ghi word/word_value</span></div>
+    <div class="ep-body">
+      <div class="blk"><h4>Request body</h4>
+        <table><tr><th>Trường</th><th>Kiểu</th><th>Ràng buộc</th></tr>
+        <tr><td><code>words</code></td><td><span class="k">string[]</span></td><td>1–20 phần tử; mỗi phần tử tối đa 255 ký tự; là các từ tiếng Anh người dùng chọn từ màn hình đề xuất</td></tr></table>
+        <div class="note" style="margin-top:10px">Bước 2 của luồng 2 bước (§13.12): mỗi từ cache-first — cache còn → dùng lại; cache mất (sự cố) → gọi AI sinh nghĩa lại — rồi <b>một transaction duy nhất</b> ghi vào sổ, mỗi từ mới có <code>reviewCount = 0</code>, <code>nextReview = createdAt</code> → đến hạn ôn <b>ngay</b>. AI ở ngoài transaction, <code>UNIQUE (user_id, english)</code> là lớp chặn race cuối.</div></div>
+      <div class="blk ret"><h4>Response</h4>
+        <div class="ret-row"><span class="pill s-ok">201</span><div class="shape"><div class="t"><b>SuccessResponse&lt;List&lt;WordDto&gt;&gt;</b></div>
+          <pre>{ <span class="key">"message"</span>: <span class="s">"Thêm từ theo chủ đề thành công"</span>, <span class="key">"data"</span>: [ <span class="c">/* WordDto */</span> ] }</pre></div></div>
+        <div class="ret-row"><span class="pill s-400">400</span><div class="shape"><div class="t"><b>ValidationErrorResponse</b> — "Danh sách từ không được để trống" / "Chỉ được thêm tối đa 20 từ mỗi lần"</div></div></div>
+        <div class="ret-row"><span class="pill s-400">400</span><div class="shape"><div class="t"><b>ErrorResponse</b> — "Từ hoặc cụm từ gửi lên không phải một từ tiếng Anh hợp lệ"</div></div></div>
+        <div class="ret-row"><span class="pill s-502">502</span><div class="shape"><div class="t"><b>ErrorResponse</b> — "Dịch vụ AI tạm thời không khả dụng"</div></div></div>
+      </div>
+      <div class="note" style="margin:10px 12px">Từ đã có trong sổ hoặc trùng trong lô <b>bị bỏ qua, không hủy cả lô</b>; response chỉ chứa các từ <b>được thêm</b> trong lần gọi này.</div>
     </div>
   </div>
 </section>
@@ -524,7 +543,7 @@
   </div>
 </section>
 
-<footer>LEnglish API Reference · khớp <b>API_REFERENCE.md</b> · 15 endpoint · 10 DTO</footer>
+<footer>LEnglish API Reference · khớp <b>API_REFERENCE.md</b> · 16 endpoint · 10 DTO</footer>
 </div>
 </body>
 </html>

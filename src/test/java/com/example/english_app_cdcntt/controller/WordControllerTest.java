@@ -409,16 +409,16 @@ class WordControllerTest {
     }
 
     @Test
-    @DisplayName("POST /api/words/generate-topic returns 201 with the topic message and the batch")
-    void generateTopic_returns201WithBatch() throws Exception {
+    @DisplayName("POST /api/words/generate-topic returns 200 with the proposal message and cached proposals")
+    void generateTopic_returns200WithProposals() throws Exception {
         when(topicGenerateService.generateTopicWords(USER_ID, "Travel"))
-                .thenReturn(List.of(wordDto()));
+                .thenReturn(List.of(new GeneratedWordDto("hello", Level.A1, List.of())));
 
         mockMvc.perform(post("/api/words/generate-topic")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"topic\":\"Travel\"}"))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.message").value("Thêm từ theo chủ đề thành công"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("Đã sinh từ theo chủ đề"))
                 .andExpect(jsonPath("$.data[0].english").value("hello"));
     }
 
@@ -457,6 +457,59 @@ class WordControllerTest {
         mockMvc.perform(post("/api/words/generate-topic")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"topic\":\"Travel\"}"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.message").value("Dịch vụ AI tạm thời không khả dụng"));
+    }
+
+    @Test
+    @DisplayName("POST /api/words/generate-topic/confirm returns 201 with the picked words added")
+    void confirmTopic_returns201WithAddedWords() throws Exception {
+        when(topicGenerateService.confirmTopicWords(USER_ID, List.of("airport", "hotel")))
+                .thenReturn(List.of(wordDto()));
+
+        mockMvc.perform(post("/api/words/generate-topic/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"words\":[\"airport\",\"hotel\"]}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.message").value("Thêm từ theo chủ đề thành công"))
+                .andExpect(jsonPath("$.data[0].english").value("hello"));
+    }
+
+    @Test
+    @DisplayName("confirm: empty picked list answers 400 before touching the service")
+    void confirmTopic_emptyList_answers400() throws Exception {
+        mockMvc.perform(post("/api/words/generate-topic/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"words\":[]}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Thông tin không hợp lệ"));
+
+        verifyNoInteractions(topicGenerateService);
+    }
+
+    @Test
+    @DisplayName("confirm: an invalid picked word → 400 with the §7 text")
+    void confirmTopic_invalidWord_answers400() throws Exception {
+        when(topicGenerateService.confirmTopicWords(USER_ID, List.of("not a word!")))
+                .thenThrow(new InvalidWordException());
+
+        mockMvc.perform(post("/api/words/generate-topic/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"words\":[\"not a word!\"]}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message")
+                        .value("Từ hoặc cụm từ gửi lên không phải một từ tiếng Anh hợp lệ"));
+    }
+
+    @Test
+    @DisplayName("confirm: AI failure on a cache miss → 502, notebook unchanged")
+    void confirmTopic_aiFailure_answers502() throws Exception {
+        when(topicGenerateService.confirmTopicWords(USER_ID, List.of("airport")))
+                .thenThrow(new AiServiceException("upstream 500"));
+
+        mockMvc.perform(post("/api/words/generate-topic/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"words\":[\"airport\"]}"))
                 .andExpect(status().isBadGateway())
                 .andExpect(jsonPath("$.message").value("Dịch vụ AI tạm thời không khả dụng"));
     }
