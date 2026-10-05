@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LEnglish — API Reference</title>
+<style>
+  :root{
+    --bg:#f6f8fb; --card:#ffffff; --ink:#1a2332; --muted:#5b6b80; --line:#e4e9f1;
+    --brand:#2563eb; --brand-soft:#eff6ff;
+    --get:#0e9f6e; --get-bg:#e6f7f1;
+    --post:#2563eb; --post-bg:#e8efff;
+    --put:#d97706; --put-bg:#fdf3e3;
+    --del:#dc2626; --del-bg:#fdeaea;
+    --ok:#0e9f6e; --warn:#d97706; --err:#dc2626; --ai:#7c3aed;
+    --code-bg:#0f172a; --code-ink:#e2e8f0;
+    --radius:14px; --shadow:0 1px 3px rgba(16,24,40,.06),0 8px 24px rgba(16,24,40,.06);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{font-family:"Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",Arial,sans-serif;
+       background:var(--bg);color:var(--ink);line-height:1.55;font-size:15px}
+
+  /* ===== Hero ===== */
+  .hero{background:linear-gradient(135deg,#1e3a8a 0%,#2563eb 55%,#3b82f6 100%);color:#fff;padding:40px 24px 88px}
+  .hero-inner{max-width:1080px;margin:0 auto}
+  .hero h1{font-size:30px;letter-spacing:-.02em;display:flex;align-items:center;gap:12px}
+  .hero h1 .logo{width:42px;height:42px;border-radius:12px;background:rgba(255,255,255,.18);
+       display:inline-flex;align-items:center;justify-content:center;font-size:22px}
+  .hero p{opacity:.92;margin-top:8px;max-width:760px}
+  .hero .stats{display:flex;gap:12px;margin-top:20px;flex-wrap:wrap}
+  .stat{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);border-radius:10px;
+        padding:8px 16px;font-size:13.5px}
+  .stat b{font-size:16px}
+
+  /* ===== Layout ===== */
+  .wrap{max-width:1080px;margin:-56px auto 60px;padding:0 24px}
+  section{margin-bottom:36px}
+  h2.sec{font-size:20px;margin:0 0 14px;display:flex;align-items:center;gap:10px}
+  h2.sec .dot{width:10px;height:10px;border-radius:3px;background:var(--brand)}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+         box-shadow:var(--shadow);padding:22px 24px;margin-bottom:16px}
+
+  /* ===== Conventions table ===== */
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th{text-align:left;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);
+     padding:8px 10px;border-bottom:2px solid var(--line)}
+  td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  code{font-family:"Cascadia Code",Consolas,Menlo,monospace;font-size:.92em;
+       background:var(--brand-soft);color:#1d4ed8;padding:1.5px 6px;border-radius:6px}
+  .k{color:#7c3aed} /* type in code */
+
+  /* ===== Pills ===== */
+  .pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;
+        padding:3px 11px;border-radius:999px;letter-spacing:.03em;white-space:nowrap}
+  .get{background:var(--get-bg);color:var(--get)} .post{background:var(--post-bg);color:var(--post)}
+  .put{background:var(--put-bg);color:var(--put)} .del{background:var(--del-bg);color:var(--del)}
+  .auth-pill{background:#f1f5f9;color:#475569}
+  .noauth{background:#fef9c3;color:#a16207}
+  .s-ok{background:#e6f7f1;color:var(--ok)} .s-400,.s-401,.s-403,.s-409{background:#fdf3e3;color:var(--warn)}
+  .s-502{background:#f3e8ff;color:var(--ai)} .s-500{background:#fdeaea;color:var(--err)}
+
+  /* ===== Endpoint card ===== */
+  .ep{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+      box-shadow:var(--shadow);margin-bottom:18px;overflow:hidden;scroll-margin-top:20px}
+  .ep-head{display:flex;align-items:center;gap:12px;padding:15px 20px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .ep-head .path{font-family:"Cascadia Code",Consolas,monospace;font-weight:700;font-size:15px}
+  .ep-head .name{color:var(--muted);font-size:13.5px;margin-left:auto}
+  .ep-body{padding:18px 20px;display:grid;gap:16px}
+  .blk h4{font-size:12px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:8px}
+  .ret{display:flex;flex-direction:column;gap:10px}
+  .ret-row{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap}
+  .ret-row .shape{flex:1;min-width:280px}
+  .ret-row .shape .t{font-size:13px;color:var(--muted);margin-bottom:4px}
+  .ret-row .shape .t b{color:var(--ink)}
+  pre{background:var(--code-bg);color:var(--code-ink);border-radius:10px;padding:13px 15px;
+      font-family:"Cascadia Code",Consolas,Menlo,monospace;font-size:12.8px;line-height:1.55;
+      overflow-x:auto;margin-top:6px}
+  pre .s{color:#86efac} pre .n{color:#fca5a5} pre .key{color:#93c5fd} pre .cm{color:#64748b;font-style:italic}
+  .note{background:var(--brand-soft);border-left:3px solid var(--brand);border-radius:0 8px 8px 0;
+        padding:9px 13px;font-size:13.5px;color:#1e3a8a}
+
+  /* ===== DTO cards ===== */
+  .dto-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
+  .dto{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+       box-shadow:var(--shadow);padding:18px 20px}
+  .dto h3{font-size:15.5px;margin-bottom:4px;font-family:"Cascadia Code",Consolas,monospace}
+  .dto .use{font-size:12.5px;color:var(--muted);margin-bottom:10px}
+
+  /* ===== SRS ===== */
+  .srs{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px}
+  .srs .step{background:var(--brand-soft);color:#1d4ed8;border-radius:10px;padding:8px 14px;
+             text-align:center;font-size:13px;font-weight:600}
+  .srs .step small{display:block;font-weight:400;color:var(--muted)}
+  .srs .arr{color:var(--muted);font-size:17px}
+
+  footer{text-align:center;color:var(--muted);font-size:13px;padding:10px 0 30px}
+  a{color:var(--brand);text-decoration:none} a:hover{text-decoration:underline}
+  .toc{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+  .toc a{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;
+         padding:6px 14px;border-radius:999px;font-size:13px}
+  .toc a:hover{background:rgba(255,255,255,.28);text-decoration:none}
+  @media(max-width:640px){.ep-head .name{margin-left:0;width:100%}}
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="hero-inner">
+    <h1><span class="logo">📘</span> LEnglish — API Reference</h1>
+    <p>Tài liệu 15 endpoint của backend: kiểu dữ liệu trả về, định dạng request và mã trạng thái cho từng đường dẫn.
+       Mọi request/response đều là <b>JSON UTF-8</b>.</p>
+    <div class="stats">
+      <div class="stat"><b>15</b> endpoint</div>
+      <div class="stat"><b>JWT HS256</b> Bearer auth</div>
+      <div class="stat"><b>Base URL</b> /api</div>
+      <div class="stat"><b>10</b> kiểu DTO</div>
+    </div>
+    <nav class="toc">
+      <a href="#quy-uoc">Quy ước chung</a>
+      <a href="#auth">🔐 Xác thực</a>
+      <a href="#words">📖 Từ vựng</a>
+      <a href="#phrases">✍️ Đoạn văn</a>
+      <a href="#dto">Kiểu dữ liệu (DTO)</a>
+    </nav>
+  </div>
+</div>
+
+<div class="wrap">
+
+<!-- ================= QUY ƯỚC ================= -->
+<section id="quy-uoc">
+  <h2 class="sec"><span class="dot"></span>Quy ước chung</h2>
+  <div class="panel">
+    <table>
+      <tr><th style="width:220px">Bọc phản hồi thành công</th><th>Kiểu trả về</th><th>Áp dụng cho</th></tr>
+      <tr><td><code>MessageResponse</code></td><td><code>{"message": string}</code></td><td>register · logout · delete từ · delete đoạn văn</td></tr>
+      <tr><td><code>SuccessResponse&lt;T&gt;</code></td><td><code>{"message": string, "data": T}</code></td><td>thêm/sửa từ · thêm từ theo chủ đề · thêm đoạn văn</td></tr>
+      <tr><td>DTO trần (không bọc)</td><td>DTO trực tiếp</td><td>login · refresh · danh sách · generate · review · due-count</td></tr>
+    </table>
+    <table style="margin-top:16px">
+      <tr><th style="width:220px">Lỗi</th><th>Khi nào</th></tr>
+      <tr><td><code>ErrorResponse</code></td><td><code>{"message": string}</code> — mọi lỗi nghiệp vụ (401/403/409/502/500)</td></tr>
+      <tr><td><code>ValidationErrorResponse</code></td><td><code>{"message": string, "details":[{"field","message"}]}</code> — 400 Bean Validation</td></tr>
+    </table>
+    <p class="note" style="margin-top:14px">🔑 Mọi endpoint <b>trừ 4 endpoint /api/auth/*</b> đều cần header
+      <code>Authorization: Bearer &lt;accessToken&gt;</code>. Chủ sở hữu dữ liệu luôn lấy từ JWT (<code>uid</code>), không bao giờ từ request.</p>
+  </div>
+</section>
+
+<!-- ================= AUTH ================= -->
+<section id="auth">
+  <h2 class="sec"><span class="dot"></span>🔐 Xác thực — /api/auth</h2>
+
+  <div class="ep" id="register">
+    <div class="ep-head"><span class="pill post">POST</span><span class="path">/api/auth/register</span>
+      <span class="pill noauth">Không cần token</span><span class="name">Đăng ký tài khoản</span></div>
+    <div class="ep-body">
+      <div class="blk"><h4>Request body</h4>
+        <table>
+          <tr><th>Trường</th><th>Kiểu</th><th>Ràng buộc</th></tr>
+          <tr><td><code>username</code></td><td><span class="k">string</span></td><td>3–50 ký tự, chỉ <code>[A-Za-z0-9_.]</code></td></tr>
+          <tr><td><code>password</code></td><td><span class="k">string</span></td><td>≥ 8 ký tự, tối đa 72 byte UTF-8</td></tr>
+        </table>
+      </div>
+      <div class="blk ret"><h4>Response</h4>
+        <div class="ret-row"><span class="pill s-ok">201</span><div class="shape">
+          <div class="t"><b>MessageResponse</b> — <code>{"message": string}</code></div>
+          <pre>{ <span class="key">"message"</span>: <span class="s">"Tạo tài khoản thành công"</span> }</pre></div></div>
+        <div class="ret-row"><span class="pill s-400">400</span><div class="shape"><div class="t"><b>ValidationErrorResponse</b> — lỗi ràng buộc</div></div></div>
+        <div class="ret-row"><span class="pill s-409">409</span><div class="shape"><div class="t"><b>ErrorResponse</b> — <code>{"message": "Tên đăng nhập đã tồn tại"}</code></div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ep" id="login">
+    <div class="ep-head"><span class="pill post">POST</span><span class="path">/api/auth/login</span>
+      <span class="pill noauth">Không cần token</span><span class="name">Đăng nhập, nhận cặp token</span></div>
+    <div class="ep-body">
+      <div class="blk"><h4>Request body</h4>
+        <p style="font-size:13.5px;color:var(--muted)">Giống register: <code>username</code> + <code>password</code> (string).</p></div>
+      <div class="blk ret"><h4>Response</h4>
+        <div class="ret-row"><span class="pill s-ok">200</span><div class="shape">
+          <div class="t"><b>AuthResponse</b> — trả trực tiếp (không bọc)</div>
+          <pre>{
+  <span class="key">"accessToken"</span>:  <span class="s">"eyJ..."</span>,   <span class="cm">// JWT HS256, hạn 15 phút</span>
+  <span class="key">"refreshToken"</span>: <span class="s">"eyJ..."</span>,   <span class="cm">// JWT xoay vòng, hạn dài</span>
+  <span class="key">"expiresIn"</span>:    <span class="n">900</span>          <span class="cm">// số giây accessToken còn hạn</span>
+}</pre></div></div>
+        <div class="ret-row"><span class="pill s-401">401</span><div class="shape"><div class="t"><b>ErrorResponse</b> — <code>{"message": "Đăng nhập thất bại"}</code> (không tiết lộ trường nào sai)</div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ep" id="logout">
+    <div class="ep-head"><span class="pill post">POST</span><span class="path">/api/auth/logout</span>
+      <span class="pill noauth">PermitAll</span><span class="name">Đăng xuất — xoá refresh token</span></div>
+    <div class="ep-body">
+      <div class="blk"><h4>Request body</h4>
+        <table><tr><th>Trường</th><th>Kiểu</th></tr>
+        <tr><td><code>refreshToken</code></td><td><span class="k">string</span> (JWT)</td></tr></table></div>
+      <div class="blk ret"><h4>Response</h4>
+        <div class="ret-row"><span class="pill s-ok">200</span><div class="shape">
+          <div class="t"><b>MessageResponse</b> — token không còn trong DB vẫn trả 200</div>
+          <pre>{ <span class="key">"message"</span>: <span class="s">"Đăng xuất thành công"</span> }</pre></div></div>
+        <div class="ret-row"><span class="pill s-400">400</span><div class="shape"><div class="t"><b>ValidationErrorResponse</b> — body không hợp lệ</div></div></div>
+      </div>
+      <div class="note">Access token chưa hết hạn vẫn dùng được đến khi hết hạn (stateless).</div>
+    </div>
+  </div>
+
+  <div class="ep" id="refresh">
+    <div class="ep-head"><span class="pill post">POST</span><span class="path">/api/auth/refresh</span>
+      <span class="pill noauth">Không cần token</span><span class="name">Làm mới phiên — xoay vòng token</span></div>
+    <div class="ep-body">
+      <div class="blk"><h4>Request body</h4>
+        <table><tr><th>Trường</th><th>Kiểu</th></tr>
+        <tr><td><code>refreshToken</code></td><td><span class="k">string</span> (JWT)</td></tr></table></div>
+      <div class="blk ret"><h4>Response</h4>
+        <div class="ret-row"><span class="pill s-ok">200</span><div class="shape">
+          <div class="t"><b>AuthResponse</b> — cặp token <b>mới</b> (token cũ bị xoá)</div></div></div>
+        <div class="ret-row"><span class="pill s-401">401</span><div class="shape"><div class="t"><b>ErrorResponse</b> — <code>"Đăng nhập thất bại"</code> hoặc <code>"Phiên đăng nhập hết hạn"</code> (row bị xoá trước khi trả lỗi)</div></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= WORDS ================= -->
+<section id="words">
+  <h2 class="sec"><span class="dot"></span>📖 Từ vựng — /api/words</h2>
+
+  <div class="ep" id="w-list">
+    <div class="ep-head"><span class="pill get">GET</span><span class="path">/api/words</span>
+      <span class="pill auth-pill">Bearer</span><span class="name">Danh sách từ của tôi</span></div>
+    <div class="ep-body">
+      <div class="blk ret"><h4>Response</h4>
+        <div class="ret-row"><span class="pill s-ok">200</span><div class="shape">
+          <div class="t"><b>List&lt;WordDto&gt;</b> — mảng JSON, sắp theo <code>id</code> tăng dần</div>
+          <pre>[
+  {
+    <span class="key">"id"</span>: <span class="n">1</span>, <span class="key">"english"</span>: <span class="s">"serendipity"</span>, <span class="key">"level"</span>: <span class="s">"B2"</span>,
+    <span class="key">"reviewCount"</span>: <span class="n">1</span>, <span class="key">"nextReview"</span>: <span class="s">"2026-10-03T00:00:00Z"</span>,
+    <span class="key">"createdAt"</span>: <span class="s">"..."</span>, <span class="key">"updatedAt"</span>: <span class="s">"..."</span>,
+    <span class="key">"values"</span>: [ { <span class="key">"id"</span>: <span class="n">1</span>, <span class="key">"vietnamese"</span>: <span class="s">"sự tình cờ may mắn"</span>,
+                 <span class="key">"example"</span>: <span class="s">"A serendipity brought us together."</span>,
+                 <span class="key">"exampleTranslation"</span>: <span class="s">"..."</span>,
+                 <span class="key">"pronunciation"</span>: <span class="s">"/ˌser.ənˈdɪp.ə.ti/"</span>,
+                 <span class="key">"partOfSpeech"</span>: <span class="s">"NOUN"</span> } ]
+  }
+]</pre></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ep" id="w-due">
+    <div class="ep-head"><span class="pill get">GET</span><span class="path">/api/words/due-count</span>
+      <span class="pill auth-pill">Bearer</span><span class="name">Số từ đến hạn ôn</span></div>
+    <div class="ep-body">
+      <div class="blk ret"><h4>Response</h4>
+        <div class="ret-row"><span class="pill s-ok">200</span><div class="shape">
+          <div class="t">Object trần — đếm từ có <code>nextReview ≤ now</code> (biên == được tính)</div>
+          <pre>{ <span class="key">"dueCount"</span>: <span class="n">3</span> }</pre></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ep" id="w-generate">
+    <div class="ep-head"><span class="pill get">GET</span><span class="path">/api/words/generate?english=serendipity</span>
+      <span class="pill auth-pill">Bearer</span><span class="name">Sinh nghĩa bằng AI (cache-first)</span></div>
+    <div class="ep-body">
+      <div class="blk"><h4>Query param</h4>
+        <table><tr><th>Tham số</th><th>Kiểu</th><th>Ràng buộc</th></tr>
+        <tr><td><code>english</code></td><td><span class="k">string</span></td><td>1–5 từ (kể cụm động từ: <code>make up</code>); tự lower-case + gộp khoảng trắng</td></tr></table></div>
+      <div class="blk ret"><h4>Response</h4>
+        <div class="ret-row"><span class="pill s-ok">200</span><div class="shape">
+          <div class="t"><b>GeneratedWordDto</b> — chỉ <code>english, level, values</code>; <code>values[].id = null</code> (chưa lưu)</div>
+          <pre>{
+  <span class="key">"english"</span>: <span class="s">"serendipity"</span>, <span class="key">"level"</span>: <span class="s">"B2"</span>,
+  <span class="key">"values"</span>: [ { <span class="key">"id"</span>: <span class="n">null</span>, <span class="key">"vietnamese"</span>: <span class="s">"sự tình cờ may mắn"</span>, <span class="cm">/* ... */</span> } ]
+}</pre></div></div>
+        <div class="ret-row"><span class="pill s-400">400</span><div class="shape"><div class="t"><b>ErrorResponse</b> — "Từ hoặc cụm từ gửi lên không phải một từ tiếng Anh hợp lệ"</div></div></div>
+        <div class="ret-row"><span class="pill s-502">502</span><div class="shape"><div class="t"><b>ErrorResponse</b> — "Dịch vụ AI tạm thời không khả dụng"</div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ep" id="w-create">
+    <div class="ep-head"><span class="pill post">POST</span><span class="path">/api/words</span>
+      <span class="pill auth-pill">Bearer</span><span class="name">Thêm từ vào sổ</span></div>
+    <div class="ep-body">
+      <div class="blk"><h4>Request body — 1–20 nghĩa</h4>
+        <table>
+          <tr><th>Trường</th><th>Kiểu</th><th>Ghi chú</th></tr>
+          <tr><td><code>english</code></td><td><span class="k">string</span></td><td>trùng → 409</td></tr>
+          <tr><td><code>level</code></td><td><span class="k">string</span></td><td><code>A1…C2</code></td></tr>
+          <tr><td><code>values[]</code></td><td><span class="k">WordValueDto[]</span></td><td>tối thiểu 1 phần tử, tối đa 20</td></tr>
+        </table>
+        <p class="note" style="margin-top:10px">Từ mới có <code>reviewCount = 0</code>, <code>nextReview = createdAt</code> → đến hạn ôn <b>ngay</b>.</p></div>
+      <div class="blk ret"><h4>Response</h4>
+        <div class="ret-row"><span class="pill s-ok">201</span><div class="shape">
+          <div class="t"><b>SuccessResponse&lt;WordDto&gt;</b></div>
+          <pre>{ <span class="key">"message"</span>: <span class="s">"Thêm từ thành công"</span>, <span class="key">"data"</span>: { <span class="cm">/* WordDto đầy đủ */</span> } }</pre></div></div>
+        <div class="ret-row"><span class="pill s-400">400</span><div class="shape"><div class="t"><b>ValidationErrorResponse</b></div></div></div>
+        <div class="ret-row"><span class="pill s-409">409</span><div class="shape"><div class="t"><b>ErrorResponse</b> — "Từ này đã có trong sổ của bạn"</div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ep" id="w-update">
+    <div class="ep-head"><span class="pill put">PUT</span><span class="path">/api/words/{id}</span>
+      <span class="pill auth-pill">Bearer</span><span class="name">Sửa từ</span></div>
+    <div class="ep-body">
+      <div class="blk"><h4>Request body</h4>
+        <p style="font-size:13.5px;color:var(--muted)">Giống thêm từ. Nghĩa có <code>id</code> → cập nhật tại chỗ; không có <code>id</code> → thêm mới; thiếu trong danh sách → bị xoá.</p></div>
+      <div class="blk ret"><h4>Response</h4>
+        <div class="ret-row"><span class="pill s-ok">200</span><div class="shape"><div class="t"><b>SuccessResponse&lt;WordDto&gt;</b> — <code>{"message":"Sửa từ thành công","data": WordDto}</code></div></div></div>
+        <div class="ret-row"><span class="pill s-400">400</span><div class="shape"><div class="t">validation · nghĩa <code>id</code> lạ / không thuộc từ</div></div></div>
+        <div class="ret-row"><span class="pill s-403">403</span><div class="shape"><div class="t"><b>ErrorResponse</b> — "Không có quyền sửa từ này" (không lộ sự tồn tại của từ)</div></div></div>
+        <div class="ret-row"><span class="pill s-409">409</span><div class="shape"><div class="t">trùng tên từ sau chuẩn hoá</div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ep" id="w-delete">
+    <div class="ep-head"><span class="pill del">DELETE</span><span class="path">/api/words/{id}</span>
+      <span class="pill auth-pill">Bearer</span><span class="name">Xoá từ (cascade meanings)</span></div>
+    <div class="ep-body">
+      <div class="blk ret"><h4>Response</h4>
+        <div class="ret-row"><span class="pill s-ok">200</span><div class="shape"><div class="t"><b>MessageResponse</b></div>
+          <pre>{ <span class="key">"message"</span>: <span class="s">"Xóa từ thành công"</span> }</pre></div></div>
+        <div class="ret-row"><span class="pill s-403">403</span><div class="shape"><div class="t"><b>ErrorResponse</b> — "Không có quyền xóa từ này"</div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ep" id="w-review">
+    <div class="ep-head"><span class="pill post">POST</span><span class="path">/api/words/review</span>
+      <span class="pill auth-pill">Bearer</span><span class="name">Ôn tập — đẩy lịch SRS</span></div>
+    <div class="ep-body">
+      <div class="blk"><h4>Request body</h4>
+        <table><tr><th>Trường</th><th>Kiểu</th><th>Ràng buộc</th></tr>
+        <tr><td><code>wordIds</code></td><td><span class="k">number[]</span></td><td>1–500 phần tử; <b>id trùng được tự gộp</b>; mọi id phải thuộc sở hữu — nếu không, <b>toàn batch rollback</b></td></tr></table>
+        <div class="note" style="margin-top:10px">Ladder SRS — sau lần ôn thứ n, <code>nextReview = now +</code> :</div>
+        <div class="srs">
+          <div class="step">n=1<small>1 ngày</small></div><span class="arr">→</span>
+          <div class="step">n=2<small>3 ngày</small></div><span class="arr">→</span>
+          <div class="step">n=3<small>7 ngày</small></div><span class="arr">→</span>
+          <div class="step">n=4<small>14 ngày</small></div><span class="arr">→</span>
+          <div class="step">n≥5<small>30 ngày (cap)</small></div>
+        </div></div>
+      <div class="blk ret"><h4>Response</h4>
+        <div class="ret-row"><span class="pill s-ok">200</span><div class="shape">
+          <div class="t">Object trần — số từ <b>distinct</b> đã ghi nhận</div>
+          <pre>{ <span class="key">"reviewedCount"</span>: <span class="n">2</span> }</pre></div></div>
+        <div class="ret-row"><span class="pill s-400">400</span><div class="shape"><div class="t"><b>ValidationErrorResponse</b></div></div></div>
+        <div class="ret-row"><span class="pill s-403">403</span><div class="shape"><div class="t"><b>ErrorResponse</b> — batch bị huỷ hoàn toàn, không từ nào được cập nhật</div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ep" id="w-generate-topic">
+    <div class="ep-head"><span class="pill post">POST</span><span class="path">/api/words/generate-topic</span>
+      <span class="pill auth-pill">Bearer</span><span class="name">Thêm từ theo chủ đề — AI sinh 10 từ</span></div>
+    <div class="ep-body">
+      <div class="blk"><h4>Request body</h4>
+        <table><tr><th>Trường</th><th>Kiểu</th><th>Ràng buộc</th></tr>
+        <tr><td><code>topic</code></td><td><span class="k">string</span></td><td><code>@NotBlank</code>; tối đa 255 ký tự; chuẩn hóa trim + gộp khoảng trắng trước khi gửi AI</td></tr></table>
+        <div class="note" style="margin-top:10px">Flow (§7.1): AI xác nhận chủ đề → đọc từ đã có trong sổ làm <b>exclude</b> → AI sinh 10 từ (nghĩa, phiên âm, từ loại, ví dụ, level) → từng từ cache-first qua <code>word_cache</code>/<code>word_cache_values</code> → lưu vào sổ <b>một transaction duy nhất</b>. Từ mới có <code>reviewCount = 0</code>, <code>nextReview = createdAt</code> → đến hạn ôn <b>ngay</b>.</div></div>
+      <div class="blk ret"><h4>Response</h4>
+        <div class="ret-row"><span class="pill s-ok">201</span><div class="shape"><div class="t"><b>SuccessResponse&lt;List&lt;WordDto&gt;&gt;</b></div>
+          <pre>{ <span class="key">"message"</span>: <span class="s">"Thêm từ theo chủ đề thành công"</span>, <span class="key">"data"</span>: [ <span class="c">/* WordDto */</span> ] }</pre></div></div>
+        <div class="ret-row"><span class="pill s-400">400</span><div class="shape"><div class="t"><b>ValidationErrorResponse</b> — "Chủ đề không được để trống"</div></div></div>
+        <div class="ret-row"><span class="pill s-400">400</span><div class="shape"><div class="t"><b>ErrorResponse</b> — "Chủ đề không hợp lệ, vui lòng nhập lại" (AI từ chối chủ đề)</div></div></div>
+        <div class="ret-row"><span class="pill s-502">502</span><div class="shape"><div class="t"><b>ErrorResponse</b> — "Dịch vụ AI tạm thời không khả dụng"</div></div></div>
+      </div>
+      <div class="note" style="margin:10px 12px">Từ trùng (đã có trong sổ hoặc trùng trong lô) <b>bị bỏ qua, không hủy cả lô</b>; <code>UNIQUE (user_id, english)</code> là lớp chặn cuối.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= PHRASES ================= -->
+<section id="phrases">
+  <h2 class="sec"><span class="dot"></span>✍️ Đoạn văn — /api/phrases</h2>
+
+  <div class="ep" id="p-list">
+    <div class="ep-head"><span class="pill get">GET</span><span class="path">/api/phrases</span>
+      <span class="pill auth-pill">Bearer</span><span class="name">Danh sách đoạn văn đã chấm</span></div>
+    <div class="ep-body">
+      <div class="blk ret"><h4>Response</h4>
+        <div class="ret-row"><span class="pill s-ok">200</span><div class="shape">
+          <div class="t"><b>List&lt;PhraseDto&gt;</b> — sắp theo <code>id</code> tăng dần</div>
+          <pre>[
+  {
+    <span class="key">"id"</span>: <span class="n">5</span>,
+    <span class="key">"text"</span>: <span class="s">"I has went to school yesterday."</span>,
+    <span class="key">"correctedText"</span>: <span class="s">"I went to school yesterday."</span>,
+    <span class="key">"score"</span>: <span class="n">4</span>,
+    <span class="key">"createdAt"</span>: <span class="s">"..."</span>,
+    <span class="key">"errors"</span>: [
+      { <span class="key">"incorrect"</span>: <span class="s">"I has went"</span>, <span class="key">"correction"</span>: <span class="s">"I went"</span>,
+        <span class="key">"explanation"</span>: <span class="s">"Past simple needs 'went', not 'has went'."</span> }
+    ]
+  }
+]</pre></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ep" id="p-create">
+    <div class="ep-head"><span class="pill post">POST</span><span class="path">/api/phrases</span>
+      <span class="pill auth-pill">Bearer</span><span class="name">Chấm điểm bằng AI &amp; lưu</span></div>
+    <div class="ep-body">
+      <div class="blk"><h4>Request body</h4>
+        <table><tr><th>Trường</th><th>Kiểu</th><th>Ràng buộc</th></tr>
+        <tr><td><code>text</code></td><td><span class="k">string</span></td><td>10–5000 ký tự</td></tr></table>
+        <p class="note" style="margin-top:10px">AI chấm điểm rồi lưu <code>text + correctedText + score + errors</code> <b>nguyên tố</b> (1 transaction; lỗi AI → không lưu gì). <code>score</code>: số nguyên 0–10.</p></div>
+      <div class="blk ret"><h4>Response</h4>
+        <div class="ret-row"><span class="pill s-ok">201</span><div class="shape">
+          <div class="t"><b>SuccessResponse&lt;PhraseDto&gt;</b></div>
+          <pre>{ <span class="key">"message"</span>: <span class="s">"Thêm đoạn văn thành công"</span>, <span class="key">"data"</span>: { <span class="cm">/* PhraseDto */</span> } }</pre></div></div>
+        <div class="ret-row"><span class="pill s-400">400</span><div class="shape"><div class="t"><b>ErrorResponse</b> — "Đoạn văn gửi lên không hợp lệ" (AI xác nhận câu sai ngữ pháp quá nặng)</div></div></div>
+        <div class="ret-row"><span class="pill s-502">502</span><div class="shape"><div class="t"><b>ErrorResponse</b> — "Dịch vụ AI tạm thời không khả dụng"</div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ep" id="p-delete">
+    <div class="ep-head"><span class="pill del">DELETE</span><span class="path">/api/phrases/{id}</span>
+      <span class="pill auth-pill">Bearer</span><span class="name">Xoá đoạn văn (cascade errors)</span></div>
+    <div class="ep-body">
+      <div class="blk ret"><h4>Response</h4>
+        <div class="ret-row"><span class="pill s-ok">200</span><div class="shape"><div class="t"><b>MessageResponse</b></div>
+          <pre>{ <span class="key">"message"</span>: <span class="s">"Xóa đoạn văn thành công"</span> }</pre></div></div>
+        <div class="ret-row"><span class="pill s-403">403</span><div class="shape"><div class="t"><b>ErrorResponse</b> — "Không có quyền xóa đoạn văn này"</div></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= DTO ================= -->
+<section id="dto">
+  <h2 class="sec"><span class="dot"></span>Kiểu dữ liệu trả về (DTO)</h2>
+  <div class="dto-grid">
+
+    <div class="dto"><h3>AuthResponse</h3><div class="use">login · refresh (trả trần)</div>
+      <table>
+        <tr><th>Trường</th><th>Kiểu</th></tr>
+        <tr><td><code>accessToken</code></td><td><span class="k">string</span> — JWT HS256, hạn ngắn</td></tr>
+        <tr><td><code>refreshToken</code></td><td><span class="k">string</span> — JWT xoay vòng</td></tr>
+        <tr><td><code>expiresIn</code></td><td><span class="k">long</span> — giây còn hạn của access token</td></tr>
+      </table></div>
+
+    <div class="dto"><h3>MessageResponse</h3><div class="use">register · logout · delete</div>
+      <table><tr><th>Trường</th><th>Kiểu</th></tr>
+      <tr><td><code>message</code></td><td><span class="k">string</span></td></tr></table></div>
+
+    <div class="dto"><h3>SuccessResponse&lt;T&gt;</h3><div class="use">thêm/sửa từ · thêm đoạn văn</div>
+      <table><tr><th>Trường</th><th>Kiểu</th></tr>
+      <tr><td><code>message</code></td><td><span class="k">string</span></td></tr>
+      <tr><td><code>data</code></td><td><span class="k">T</span> — WordDto hoặc PhraseDto</td></tr></table></div>
+
+    <div class="dto"><h3>WordDto</h3><div class="use">list · create · update</div>
+      <table>
+        <tr><th>Trường</th><th>Kiểu</th></tr>
+        <tr><td><code>id</code></td><td><span class="k">long</span></td></tr>
+        <tr><td><code>english</code></td><td><span class="k">string</span></td></tr>
+        <tr><td><code>level</code></td><td><span class="k">string</span> — A1…C2</td></tr>
+        <tr><td><code>reviewCount</code></td><td><span class="k">int</span> ≥ 0</td></tr>
+        <tr><td><code>nextReview</code></td><td><span class="k">Instant</span> — ISO-8601 UTC</td></tr>
+        <tr><td><code>createdAt</code> / <code>updatedAt</code></td><td><span class="k">Instant</span></td></tr>
+        <tr><td><code>values</code></td><td><span class="k">List&lt;WordValueDto&gt;</span> — 1…20</td></tr>
+      </table></div>
+
+    <div class="dto"><h3>WordValueDto</h3><div class="use">một nghĩa của từ</div>
+      <table>
+        <tr><th>Trường</th><th>Kiểu</th></tr>
+        <tr><td><code>id</code></td><td><span class="k">Long</span> — null nếu chưa lưu (generate) / thêm mới</td></tr>
+        <tr><td><code>vietnamese</code></td><td><span class="k">string</span> — bắt buộc</td></tr>
+        <tr><td><code>example</code></td><td><span class="k">string?</span></td></tr>
+        <tr><td><code>exampleTranslation</code></td><td><span class="k">string?</span></td></tr>
+        <tr><td><code>pronunciation</code></td><td><span class="k">string?</span></td></tr>
+        <tr><td><code>partOfSpeech</code></td><td><span class="k">enum</span>: NOUN · VERB · ADJECTIVE · ADVERB · PREPOSITION · CONJUNCTION · PRONOUN · INTERJECTION</td></tr>
+      </table></div>
+
+    <div class="dto"><h3>GeneratedWordDto</h3><div class="use">GET /api/words/generate</div>
+      <table>
+        <tr><th>Trường</th><th>Kiểu</th></tr>
+        <tr><td><code>english</code></td><td><span class="k">string</span></td></tr>
+        <tr><td><code>level</code></td><td><span class="k">string</span></td></tr>
+        <tr><td><code>values</code></td><td><span class="k">List&lt;WordValueDto&gt;</span> — 1…3, <code>id = null</code>; không có id/reviewCount/nextReview/timestamps</td></tr>
+      </table></div>
+
+    <div class="dto"><h3>PhraseDto</h3><div class="use">list · create đoạn văn</div>
+      <table>
+        <tr><th>Trường</th><th>Kiểu</th></tr>
+        <tr><td><code>id</code></td><td><span class="k">long</span></td></tr>
+        <tr><td><code>text</code></td><td><span class="k">string</span> — 10…5000 ký tự</td></tr>
+        <tr><td><code>correctedText</code></td><td><span class="k">string</span> — bản AI sửa</td></tr>
+        <tr><td><code>score</code></td><td><span class="k">int</span> — 0…10 (nguyên, không kẹp biên)</td></tr>
+        <tr><td><code>createdAt</code></td><td><span class="k">Instant</span></td></tr>
+        <tr><td><code>errors</code></td><td><span class="k">List&lt;GrammarErrorDto&gt;</span> — ≤ 100</td></tr>
+      </table></div>
+
+    <div class="dto"><h3>GrammarErrorDto</h3><div class="use">một lỗi ngữ pháp</div>
+      <table>
+        <tr><th>Trường</th><th>Kiểu</th></tr>
+        <tr><td><code>incorrect</code></td><td><span class="k">string?</span> — ≤ 5000 ký tự</td></tr>
+        <tr><td><code>correction</code></td><td><span class="k">string?</span> — ≤ 5000 ký tự</td></tr>
+        <tr><td><code>explanation</code></td><td><span class="k">string</span> — bắt buộc, ≤ 5000 ký tự</td></tr>
+      </table></div>
+
+    <div class="dto"><h3>ErrorResponse</h3><div class="use">mọi lỗi nghiệp vụ</div>
+      <table><tr><th>Trường</th><th>Kiểu</th></tr>
+      <tr><td><code>message</code></td><td><span class="k">string</span> — cố định, thân thiện, không lộ nội bộ</td></tr></table></div>
+
+    <div class="dto"><h3>ValidationErrorResponse</h3><div class="use">400 Bean Validation</div>
+      <table>
+        <tr><th>Trường</th><th>Kiểu</th></tr>
+        <tr><td><code>message</code></td><td><span class="k">string</span> — "Thông tin không hợp lệ"</td></tr>
+        <tr><td><code>details[]</code></td><td><span class="k">[{ "field": string, "message": string }]</span></td></tr>
+      </table></div>
+
+  </div>
+</section>
+
+<footer>LEnglish API Reference · khớp <b>API_REFERENCE.md</b> · 15 endpoint · 10 DTO</footer>
+</div>
+</body>
+</html>

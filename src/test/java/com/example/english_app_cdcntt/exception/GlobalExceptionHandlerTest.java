@@ -59,6 +59,27 @@ class GlobalExceptionHandlerTest {
     private static void logoutEndpoint(LogoutForm form) {
     }
 
+    @Test
+    @DisplayName("InvalidTopicException → 400 \"Chủ đề không hợp lệ, vui lòng nhập lại\" (§4.1 row 15)")
+    void invalidTopicAnswersBadRequest() {
+        ResponseEntity<ErrorResponse> response = handler.handleInvalidTopic(new InvalidTopicException());
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().message()).isEqualTo("Chủ đề không hợp lệ, vui lòng nhập lại");
+    }
+
+    @Test
+    @DisplayName("InvalidWordException → 400 với đúng message §4.1")
+    void invalidWordAnswersBadRequest() {
+        ResponseEntity<ErrorResponse> response = handler.handleInvalidWord(new InvalidWordException());
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().message())
+                .isEqualTo("Từ hoặc cụm từ gửi lên không phải một từ tiếng Anh hợp lệ");
+    }
+
     private MethodArgumentNotValidException validationFailure(Class<?> formType, String methodName,
                                                              String field, String message) throws Exception {
         Method method = GlobalExceptionHandlerTest.class.getDeclaredMethod(methodName, formType);

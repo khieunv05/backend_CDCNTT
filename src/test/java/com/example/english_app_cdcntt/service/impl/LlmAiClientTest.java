@@ -22,6 +22,7 @@ import com.example.english_app_cdcntt.service.AiClient;
 import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.time.Duration;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -439,6 +440,105 @@ class LlmAiClientTest {
                 .andRespond(withStatus(HttpStatus.INTERNAL_SERVER_ERROR));
 
         assertThatThrownBy(() -> client.gradePhrase("Some text to grade."))
+                .isInstanceOf(AiServiceException.class);
+        server.verify();
+    }
+
+    private String topicWordsContent() {
+        return "{\"words\":[{\"english\":\"airport\",\"level\":\"B1\",\"values\":[{"
+                + "\"vietnamese\":\"sân bay\","
+                + "\"example\":\"The airport is busy.\","
+                + "\"exampleTranslation\":\"Sân bay đông đúc.\","
+                + "\"pronunciation\":\"/ˈeəpɔːt/\","
+                + "\"partOfSpeech\":\"NOUN\"}]}]}";
+    }
+
+    @Test
+    @DisplayName("checkTopic: payload schema đúng → trả cờ boolean, prompt mang đúng chủ đề")
+    void checkTopicMapsPayload() throws Exception {
+        server.expect(requestTo("https://ai.test/chat/completions"))
+                .andExpect(jsonPath("$.messages[1].content").value("Topic to check: Du lịch"))
+                .andRespond(withSuccess(envelope("{\"validTopic\":true}"),
+                        MediaType.APPLICATION_JSON));
+
+        assertThat(client.checkTopic("Du lịch")).isTrue();
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("checkTopic: validTopic=false là KẾT QUẢ hợp lệ (chủ đề bị từ chối), không phải 502")
+    void checkTopicFalseIsAResult() throws Exception {
+        server.expect(requestTo("https://ai.test/chat/completions"))
+                .andRespond(withSuccess(envelope("{\"validTopic\":false}"),
+                        MediaType.APPLICATION_JSON));
+
+        assertThat(client.checkTopic("fjaskdf")).isFalse();
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("checkTopic: sai schema (validTopic không phải boolean) → 502")
+    void checkTopicRejectsWrongSchema() throws Exception {
+        server.expect(requestTo("https://ai.test/chat/completions"))
+                .andRespond(withSuccess(envelope("{\"validTopic\":\"yes\"}"),
+                        MediaType.APPLICATION_JSON));
+
+        assertThatThrownBy(() -> client.checkTopic("Du lịch"))
+                .isInstanceOf(AiServiceException.class);
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("checkTopic: 429 → 502, một request duy nhất")
+    void checkTopicRateLimitFailsFast() {
+        server.expect(requestTo("https://ai.test/chat/completions"))
+                .andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS));
+
+        assertThatThrownBy(() -> client.checkTopic("Du lịch"))
+                .isInstanceOf(AiServiceException.class);
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("generateTopicWords: payload hợp lệ → TopicWord đầy đủ, prompt có exclude list")
+    void generateTopicWordsMapsPayload() throws Exception {
+        server.expect(requestTo("https://ai.test/chat/completions"))
+                .andExpect(jsonPath("$.messages[1].content")
+                        .value("Topic: Du lịch\nWords the user already has: travel, hotel"))
+                .andRespond(withSuccess(envelope(topicWordsContent()),
+                        MediaType.APPLICATION_JSON));
+
+        List<AiClient.TopicWord> words =
+                client.generateTopicWords("Du lịch", List.of("travel", "hotel"));
+
+        assertThat(words).hasSize(1);
+        assertThat(words.get(0).english()).isEqualTo("airport");
+        assertThat(words.get(0).level()).isEqualTo(Level.B1);
+        assertThat(words.get(0).values()).hasSize(1);
+        assertThat(words.get(0).values().get(0).vietnamese()).isEqualTo("sân bay");
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("generateTopicWords: words rỗng/keys sai schema → 502")
+    void generateTopicWordsRejectsWrongSchema() throws Exception {
+        server.expect(requestTo("https://ai.test/chat/completions"))
+                .andRespond(withSuccess(envelope("{\"words\":[]}"), MediaType.APPLICATION_JSON));
+
+        assertThatThrownBy(() -> client.generateTopicWords("Du lịch", List.of()))
+                .isInstanceOf(AiServiceException.class);
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("generateTopicWords: thiếu level (bắt buộc cho Word + cache) → 502")
+    void generateTopicWordsRejectsMissingLevel() throws Exception {
+        server.expect(requestTo("https://ai.test/chat/completions"))
+                .andRespond(withSuccess(envelope(
+                        "{\"words\":[{\"english\":\"airport\",\"values\":[]}]}"),
+                        MediaType.APPLICATION_JSON));
+
+        assertThatThrownBy(() -> client.generateTopicWords("Du lịch", List.of()))
                 .isInstanceOf(AiServiceException.class);
         server.verify();
     }

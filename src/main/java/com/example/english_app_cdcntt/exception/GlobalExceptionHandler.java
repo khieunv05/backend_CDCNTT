@@ -6,7 +6,6 @@ import com.example.english_app_cdcntt.dto.ValidationErrorResponse;
 import com.example.english_app_cdcntt.form.LoginForm;
 import com.example.english_app_cdcntt.form.RefreshForm;
 import com.example.english_app_cdcntt.form.PhraseForm;
-import com.example.english_app_cdcntt.form.LoginForm;
 import lombok.extern.slf4j.Slf4j;
 import java.util.Comparator;
 import java.util.List;
@@ -116,6 +115,12 @@ public class GlobalExceptionHandler {
     /** §9.2 — POST /api/phrases has its own 400 text for an invalid paragraph (§4.1 row 13). */
     @ExceptionHandler(InvalidPhraseException.class)
     ResponseEntity<ErrorResponse> handleInvalidPhrase(InvalidPhraseException e) {
+        return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+    }
+
+    /** §4.1 row 15 — the AI rejected the topic: its own 400 text, before any DB change (§7.1). */
+    @ExceptionHandler(InvalidTopicException.class)
+    ResponseEntity<ErrorResponse> handleInvalidTopic(InvalidTopicException e) {
         return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
     }
 

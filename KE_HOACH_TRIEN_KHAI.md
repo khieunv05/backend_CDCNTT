@@ -28,6 +28,7 @@
 5. Đoạn văn: xem/thêm/xóa; chấm AI trước khi lưu; lưu điểm, câu sửa và lỗi ngữ pháp.
 6. Scheduler dọn refresh token hết hạn.
 7. Migration, bảo mật, cấu hình, kiểm thử và hướng dẫn chạy/triển khai backend.
+8. Thêm từ theo chủ đề (act-20): AI xác nhận chủ đề, sinh 10 từ mới tái dùng word_cache và lưu thẳng vào sổ từ của user.
 
 ### 1.3. Ngoài phạm vi
 
@@ -205,7 +206,7 @@ Ví dụ response tạo từ:
 }
 ```
 
-### 4.1. Danh sách 14 endpoint
+### 4.1. Danh sách 15 endpoint
 
 | # | Endpoint | Thành công | Lỗi nghiệp vụ chính |
 |---|---|---|---|
@@ -223,6 +224,7 @@ Ví dụ response tạo từ:
 | 12 | GET `/api/phrases` | 200 List<PhraseDto> | 401 |
 | 13 | POST `/api/phrases` | 201 SuccessResponse<PhraseDto>: `Thêm đoạn văn thành công` | 400 `Đoạn văn gửi lên không hợp lệ`; 502 lỗi AI |
 | 14 | DELETE `/api/phrases/{id}` | 200 `Xóa đoạn văn thành công` | 403 `Không có quyền xóa đoạn văn này` |
+| 15 | POST `/api/words/generate-topic` | 201 SuccessResponse<List<WordDto>>: `Thêm từ theo chủ đề thành công` — data là các từ vừa thêm vào sổ | 400 `Chủ đề không hợp lệ, vui lòng nhập lại`; 502 lỗi AI |
 
 Tất cả endpoint protected còn có nhánh 401 chung. Lỗi AI luôn dùng message `Dịch vụ AI tạm thời không khả dụng`.
 
@@ -324,6 +326,18 @@ API này **không idempotent**: hai request hợp lệ tuần tự là hai lần
 - Không cần khóa phân tán/single-flight ở giai đoạn này; hai MISS có thể cùng gọi AI nhưng chỉ một bản cache được lưu.
 - Sinh nghĩa **không ghi** words/word_values. POST word chỉ lưu WordForm đã validate; không tự ghi đè form bằng cache.
 - Cache chưa có TTL; việc bổ sung chính sách hết hạn là công việc sau.
+
+### 7.1. Sinh 10 từ theo chủ đề — act-20
+
+- `POST /api/words/generate-topic` (protected). Form `TopicForm(String topic)` — chuẩn hóa như §2 (strip + gộp khoảng trắng), không rỗng, tối đa 255 ký tự; sai ràng buộc → 400 validation chung.
+- Điều phối không có transaction dài, theo thứ tự:
+  1. Gọi AI xác nhận topic có phải một chủ đề có nghĩa. Sai → 400 `Chủ đề không hợp lệ, vui lòng nhập lại`, không gọi AI lần hai, không ghi dữ liệu.
+  2. Đọc danh sách từ hiện có của user (khóa chuẩn hóa) trong transaction đọc ngắn, gửi kèm prompt để AI tránh trùng.
+  3. Gọi AI sinh 10 từ theo chủ đề, mỗi từ đủ english, level, values (nghĩa, phiên âm, từ loại, ví dụ) theo shape `GeneratedWordDto`; AI lỗi/schema sai → 502, không ghi gì.
+  4. Lọc trùng theo khóa chuẩn hóa — trong kết quả AI và với sổ từ hiện có: từ trùng bị bỏ qua, không hủy cả lô (chi tiết §13.12).
+  5. Một transaction ghi duy nhất: với mỗi từ — MISS thì lưu WordCache + word_cache_values (HIT dùng lại cache sẵn có, không ghi đè), sau đó lưu Word vào sổ (`reviewCount=0`, `nextReview=createdAt=updatedAt=now` như §6.2 POST) + word_values; UNIQUE `(user_id, english)` vẫn là lớp chặn race cuối.
+- 201 sau commit: `SuccessResponse<List<WordDto>>` với message `Thêm từ theo chủ đề thành công`, data là các từ thực sự thêm mới (≤10) theo shape WordDto của sổ từ — không phải GeneratedWordDto.
+- Nhánh 400/502 không tạo cache cũng không tạo word. Khác seq-09, luồng này ghi thẳng words/word_values; client không cần gọi POST /api/words tiếp.
 
 ---
 
@@ -514,6 +528,12 @@ logging.level.com.example.english_app_cdcntt: INFO
 3. Rà soát log/secrets, cấu hình production và checklist §14.
 4. **DoD:** `./mvnw.cmd verify` xanh, integration tests thực sự chạy, coverage service ≥80%, backend chạy độc lập không cần client.
 
+### Phase 8 — Sinh từ theo chủ đề (act-20) ✅ đã hoàn thành (2026-10-05)
+
+1. Form/DTO `TopicForm`, prompt xác nhận chủ đề + sinh 10 từ, tái dùng AiClient/RestClient adapter và cache transaction helper của Phase 4. — xong: `AiClient.checkTopic`/`generateTopicWords` + adapter `LlmAiClient`, prompt dùng topic chuẩn hóa và exclude list từ đã có.
+2. Endpoint generate-topic: lọc trùng, cache-first từng từ và lưu batch vào sổ trong một transaction ghi. — xong: `POST /api/words/generate-topic` (WordController), `TopicGenerateServiceImpl` (chuẩn hóa → checkTopic → exclude → AI → lọc trùng → tx), `TopicTxServiceImpl` (1 tx: cache-first + `Word` mới `reviewCount=0`, due ngay), `InvalidTopicException` → 400.
+3. **DoD:** chủ đề sai → 400 và DB không đổi; AI fail/schema sai → 502 và DB không đổi; từ trùng bị bỏ qua nhưng các từ mới vẫn lưu; từ mới có `reviewCount=0` và due ngay; 201 trả `SuccessResponse<List<WordDto>>`; race trùng từ không hủy cả lô. — đạt: unit + controller test cho đầy đủ nhánh trên, bộ 286 test xanh (`./mvnw test`).
+
 **Ước lượng sơ bộ:** 8–12 ngày làm việc cho một người đã quen stack, cộng dự phòng 20–30% cho tích hợp/provider và xử lý concurrency. Chỉ tính backend; cần hiệu chỉnh sau Phase 0, không coi đây là cam kết tiến độ.
 
 ---
@@ -552,6 +572,7 @@ logging.level.com.example.english_app_cdcntt: INFO
 9. **Score:** chỉ số nguyên 0..10; AI sai → 502, không sửa điểm bằng clamp.
 10. **Message:** chuỗi trong §4/§9 là contract kiểm thử backend; không giả định client phải suy luận nghiệp vụ từ text tiếng Việt.
 11. **Không tự mở rộng:** chưa thêm phân trang, cache TTL, idempotency key, admin, OCR/server push; khi mở rộng cần cập nhật contract và tests.
+12. **Thêm từ theo chủ đề (act-20, bổ sung theo yêu cầu user 2026-10-05):** diagram mô tả "tránh trùng danh sách từ đã gửi" ở mức ý định AI; chốt lọc trùng theo khóa chuẩn hóa trước khi lưu — từ trùng bị bỏ qua thay vì hủy cả lô, UNIQUE `(user_id, english)` là lớp chặn cuối. Gọi AI (xác nhận chủ đề và sinh từ) ngoài transaction; cả lô lưu trong một transaction ghi. Message thành công và shape 201 do kế hoạch cụ thể hóa: `Thêm từ theo chủ đề thành công` + `SuccessResponse<List<WordDto>>`; endpoint đưa tổng số lên 15.
 
 ---
 
@@ -560,7 +581,7 @@ logging.level.com.example.english_app_cdcntt: INFO
 ### 14.1. Chức năng và chất lượng
 
 - [ ] MySQL trống migrate đủ 8 bảng; schema validate khớp entity; không có bảng phụ ngoài dự kiến.
-- [ ] Đủ 14 endpoint đúng status/JSON/message, tài liệu request/response cập nhật.
+- [ ] Đủ 15 endpoint (gồm generate-topic) đúng status/JSON/message, tài liệu request/response cập nhật.
 - [ ] Không lộ/sửa dữ liệu chéo user; kiểm tra cả ID nghĩa và phrase/review.
 - [ ] Rotation atomic, expired deletion commit, reuse/concurrent token test đạt.
 - [ ] Cache race không hỏng transaction; không lưu kết quả AI lỗi; phrase/errors atomic.
@@ -605,5 +626,6 @@ Nguồn: `D:\bao_cao_LEnglish\docs\`; activity tại `activity\act-XX-*.puml`, s
 | Thêm từ từ vùng chọn / OCR | 16–17 | Tái sử dụng POST /api/words, GET /api/words/generate, POST /api/phrases; không có API thiết bị/OCR mới |
 | Dọn refresh token | 18 | @Scheduled server |
 | Xác nhận ôn tập | 19 | POST /api/words/review |
+| Thêm từ theo chủ đề | 20 | POST /api/words/generate-topic |
 
 Diagram cấu trúc: `class-diagram.puml` cho entity, `erd-diagram.puml` cho 8 bảng, `package-diagram.puml` cho phân tầng, `deployment-diagram.puml` cho phần backend–MySQL–AI, `use-case-diagram.puml` cho chức năng. Các kỹ thuật bổ sung trong kế hoạch được ghi tại §13; sửa tài liệu này không đồng nghĩa các diagram nguồn đã được cập nhật.

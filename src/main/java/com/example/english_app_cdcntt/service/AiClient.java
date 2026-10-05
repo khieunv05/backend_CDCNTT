@@ -39,6 +39,29 @@ public interface AiClient {
             PartOfSpeech partOfSpeech) {
     }
 
+    /**
+     * §7.1 step 2 — act-20 topic gate. {@code false} is a valid schema answer ("chủ đề không
+     * hợp lệ") the service maps to 400; anything wrong with the call itself is AiServiceException.
+     */
+    boolean checkTopic(String topic);
+
+    /**
+     * §7.1 step 4 — propose 10 topic words avoiding the given already-owned list. The topic and
+     * the exclusion list are data, never instructions. Schema failure is AiServiceException.
+     */
+    List<TopicWord> generateTopicWords(String topic, List<String> excludeEnglish);
+
+    /**
+     * One proposed word. {@code level} is required here (unlike {@link GeneratedMeaning}) — the
+     * notebook copy and the possible word_cache row are built from this proposal in one tx.
+     */
+    record TopicWord(String english, Level level, List<MeaningItem> values) {
+
+        public TopicWord {
+            values = values == null ? List.of() : List.copyOf(values);
+        }
+    }
+
     /** §8.2 — grade a prepared English paragraph (10–5000 chars, already length-checked). */
     /**
      * Grades a pre-validated paragraph. Provider "not a paragraph" classification

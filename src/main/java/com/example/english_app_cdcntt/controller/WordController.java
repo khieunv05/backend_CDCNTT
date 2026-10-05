@@ -8,8 +8,10 @@ import com.example.english_app_cdcntt.dto.ReviewResultResponse;
 import com.example.english_app_cdcntt.dto.SuccessResponse;
 import com.example.english_app_cdcntt.dto.WordDto;
 import com.example.english_app_cdcntt.form.ReviewForm;
+import com.example.english_app_cdcntt.form.TopicForm;
 import com.example.english_app_cdcntt.form.WordForm;
 import com.example.english_app_cdcntt.service.GenerateService;
+import com.example.english_app_cdcntt.service.TopicGenerateService;
 import com.example.english_app_cdcntt.service.WordService;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -27,7 +29,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * The word endpoints of §4.1 rows 5–11. Thin by design: it only moves data between the
+ * The word endpoints of §4.1 rows 5–15. Thin by design: it only moves data between the
  * contract shapes and the services, and the owner id always comes from the authenticated
  * principal (§5.3) — never from the request.
  */
@@ -38,13 +40,17 @@ public class WordController {
     static final String CREATE_SUCCESS_MESSAGE = "Thêm từ thành công";
     static final String UPDATE_SUCCESS_MESSAGE = "Sửa từ thành công";
     static final String DELETE_SUCCESS_MESSAGE = "Xóa từ thành công";
+    static final String TOPIC_SUCCESS_MESSAGE = "Thêm từ theo chủ đề thành công";
 
     private final WordService wordService;
     private final GenerateService generateService;
+    private final TopicGenerateService topicGenerateService;
 
-    public WordController(WordService wordService, GenerateService generateService) {
+    public WordController(WordService wordService, GenerateService generateService,
+            TopicGenerateService topicGenerateService) {
         this.wordService = wordService;
         this.generateService = generateService;
+        this.topicGenerateService = topicGenerateService;
     }
 
     @GetMapping
@@ -78,6 +84,20 @@ public class WordController {
     GeneratedWordDto generate(@AuthenticationPrincipal UserPrincipal principal,
             @RequestParam String english) {
         return generateService.generateWord(english);
+    }
+
+    /**
+     * §4.1 row 15 — act-20, add words by topic. The whole flow (AI topic check → AI proposal →
+     * one write transaction) lives in the service; this only carries the principal as the §5.3
+     * access gate. 400 when the AI rejects the topic, 502 on any AI failure — both before any
+     * DB change.
+     */
+    @PostMapping("/generate-topic")
+    @ResponseStatus(HttpStatus.CREATED)
+    SuccessResponse<List<WordDto>> generateTopic(@AuthenticationPrincipal UserPrincipal principal,
+            @Valid @RequestBody TopicForm form) {
+        return new SuccessResponse<>(TOPIC_SUCCESS_MESSAGE,
+                topicGenerateService.generateTopicWords(principal.id(), form.topic()));
     }
 
     @PostMapping

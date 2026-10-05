@@ -25,15 +25,18 @@ import com.example.english_app_cdcntt.enums.Level;
 import com.example.english_app_cdcntt.enums.PartOfSpeech;
 import com.example.english_app_cdcntt.exception.DuplicateWordException;
 import com.example.english_app_cdcntt.exception.GlobalExceptionHandler;
-import com.example.english_app_cdcntt.exception.InvalidRequestException;
-import com.example.english_app_cdcntt.exception.InvalidWordException;
 import com.example.english_app_cdcntt.exception.AiServiceException;
+import com.example.english_app_cdcntt.exception.InvalidRequestException;
+import com.example.english_app_cdcntt.exception.InvalidTopicException;
+import com.example.english_app_cdcntt.exception.InvalidWordException;
 import org.springframework.security.web.method.annotation.AuthenticationPrincipalArgumentResolver;
 import com.example.english_app_cdcntt.exception.OwnershipDeniedException;
+import com.example.english_app_cdcntt.form.TopicForm;
 import com.example.english_app_cdcntt.form.WordForm;
 import com.example.english_app_cdcntt.form.ReviewForm;
 import com.example.english_app_cdcntt.form.WordValueForm;
 import com.example.english_app_cdcntt.service.GenerateService;
+import com.example.english_app_cdcntt.service.TopicGenerateService;
 import com.example.english_app_cdcntt.service.WordService;
 import java.time.Instant;
 import java.util.List;
@@ -54,7 +57,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 /**
- * MVC slice for the five word endpoints (§4.1 rows 5, 6, 8, 9, 10): the controller's thin job —
+ * MVC slice for the six word endpoints (§4.1 rows 5, 6, 8, 9, 10, 15): the controller's thin job —
  * contract JSON, status codes and the authenticated owner id — verified through MockMvc with the
  * {@link GlobalExceptionHandler} registered, so error bodies follow §4 exactly. Business rules live
  * in {@code WordServiceImplTest}; the service is a Mockito mock here.
@@ -72,11 +75,15 @@ class WordControllerTest {
     @Mock
     private GenerateService generateService;
 
+    @Mock
+    private TopicGenerateService topicGenerateService;
+
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(new WordController(wordService, generateService))
+        mockMvc = MockMvcBuilders
+                .standaloneSetup(new WordController(wordService, generateService, topicGenerateService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
                 .build();
@@ -399,5 +406,58 @@ class WordControllerTest {
                 .andExpect(jsonPath("$.message").value("Thông tin không hợp lệ"));
 
         verifyNoInteractions(wordService);
+    }
+
+    @Test
+    @DisplayName("POST /api/words/generate-topic returns 201 with the topic message and the batch")
+    void generateTopic_returns201WithBatch() throws Exception {
+        when(topicGenerateService.generateTopicWords(USER_ID, "Travel"))
+                .thenReturn(List.of(wordDto()));
+
+        mockMvc.perform(post("/api/words/generate-topic")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"topic\":\"Travel\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.message").value("Thêm từ theo chủ đề thành công"))
+                .andExpect(jsonPath("$.data[0].english").value("hello"));
+    }
+
+    @Test
+    @DisplayName("generate-topic: blank topic answers 400 before touching the service")
+    void generateTopic_blank_answers400() throws Exception {
+        mockMvc.perform(post("/api/words/generate-topic")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"topic\":\"   \"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Thông tin không hợp lệ"));
+
+        verifyNoInteractions(topicGenerateService);
+    }
+
+    @Test
+    @DisplayName("generate-topic: AI rejects the topic → 400 with the act-20 text, no service call result")
+    void generateTopic_aiRejected_answers400() throws Exception {
+        when(topicGenerateService.generateTopicWords(USER_ID, "fjaskdf"))
+                .thenThrow(new InvalidTopicException());
+
+        mockMvc.perform(post("/api/words/generate-topic")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"topic\":\"fjaskdf\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message")
+                        .value("Chủ đề không hợp lệ, vui lòng nhập lại"));
+    }
+
+    @Test
+    @DisplayName("generate-topic: AI failure → 502 before any DB change")
+    void generateTopic_aiFailure_answers502() throws Exception {
+        when(topicGenerateService.generateTopicWords(USER_ID, "Travel"))
+                .thenThrow(new AiServiceException("upstream 500"));
+
+        mockMvc.perform(post("/api/words/generate-topic")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"topic\":\"Travel\"}"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.message").value("Dịch vụ AI tạm thời không khả dụng"));
     }
 }
