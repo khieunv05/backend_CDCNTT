@@ -103,6 +103,12 @@ class WordControllerTest {
                         "/həˈləʊ/", PartOfSpeech.NOUN)));
     }
 
+    /** Confirm-payload builder mirroring createWord semantics (nested value id is ignored). */
+    private static WordForm wordForm(String english, Level level, String vietnamese) {
+        return new WordForm(english, level, List.of(new WordValueForm(
+                null, vietnamese, "example", "dịch", "/ipa/", PartOfSpeech.NOUN)));
+    }
+
     private static String createBody(String english) {
         return """
                 {"english":"%s","level":null,"values":[{"id":null,"vietnamese":"xin chào",
@@ -464,12 +470,22 @@ class WordControllerTest {
     @Test
     @DisplayName("POST /api/words/generate-topic/confirm returns 201 with the picked words added")
     void confirmTopic_returns201WithAddedWords() throws Exception {
-        when(topicGenerateService.confirmTopicWords(USER_ID, List.of("airport", "hotel")))
+        when(topicGenerateService.confirmTopicWords(eq(USER_ID), eq(List.of(
+                wordForm("airport", Level.B1, "sân bay"),
+                wordForm("hotel", Level.A2, "khách sạn")))))
                 .thenReturn(List.of(wordDto()));
 
         mockMvc.perform(post("/api/words/generate-topic/confirm")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"words\":[\"airport\",\"hotel\"]}"))
+                        .content("""
+                                {"words":[
+                                  {"english":"airport","level":"B1","values":[
+                                    {"vietnamese":"sân bay","example":"example","exampleTranslation":"dịch",
+                                     "pronunciation":"/ipa/","partOfSpeech":"NOUN"}]},
+                                  {"english":"hotel","level":"A2","values":[
+                                    {"vietnamese":"khách sạn","example":"example","exampleTranslation":"dịch",
+                                     "pronunciation":"/ipa/","partOfSpeech":"NOUN"}]}]}
+                                """))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.message").value("Thêm từ theo chủ đề thành công"))
                 .andExpect(jsonPath("$.data[0].english").value("hello"));
@@ -490,27 +506,34 @@ class WordControllerTest {
     @Test
     @DisplayName("confirm: an invalid picked word → 400 with the §7 text")
     void confirmTopic_invalidWord_answers400() throws Exception {
-        when(topicGenerateService.confirmTopicWords(USER_ID, List.of("not a word!")))
+        when(topicGenerateService.confirmTopicWords(eq(USER_ID),
+                eq(List.of(wordForm("not a word!", Level.A2, "sai")))))
                 .thenThrow(new InvalidWordException());
 
         mockMvc.perform(post("/api/words/generate-topic/confirm")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"words\":[\"not a word!\"]}"))
+                        .content("{\"words\":[{\"english\":\"not a word!\",\"level\":\"A2\",\"values\":["
+                                + "{\"vietnamese\":\"sai\",\"example\":\"example\",\"exampleTranslation\":\"dịch\","
+                                + "\"pronunciation\":\"/ipa/\",\"partOfSpeech\":\"NOUN\"}]}]}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message")
                         .value("Từ hoặc cụm từ gửi lên không phải một từ tiếng Anh hợp lệ"));
     }
 
     @Test
-    @DisplayName("confirm: AI failure on a cache miss → 502, notebook unchanged")
-    void confirmTopic_aiFailure_answers502() throws Exception {
-        when(topicGenerateService.confirmTopicWords(USER_ID, List.of("airport")))
-                .thenThrow(new AiServiceException("upstream 500"));
+    @DisplayName("confirm: more than 20 picked words → 400 validation, service untouched")
+    void confirmTopic_moreThan20Words_answers400() throws Exception {
+        String word = "{\"english\":\"airport\",\"level\":\"B1\",\"values\":["
+                + "{\"vietnamese\":\"sân bay\",\"example\":\"I fly.\",\"exampleTranslation\":\"Tôi bay.\","
+                + "\"pronunciation\":\"/ipa/\",\"partOfSpeech\":\"NOUN\"}]}";
+        String body = "{\"words\":[" + String.join(",", java.util.Collections.nCopies(21, word)) + "]}";
 
         mockMvc.perform(post("/api/words/generate-topic/confirm")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"words\":[\"airport\"]}"))
-                .andExpect(status().isBadGateway())
-                .andExpect(jsonPath("$.message").value("Dịch vụ AI tạm thời không khả dụng"));
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Thông tin không hợp lệ"));
+
+        verifyNoInteractions(topicGenerateService);
     }
 }

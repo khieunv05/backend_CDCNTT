@@ -380,18 +380,17 @@
 
   <div class="ep" id="w-generate-topic-confirm">
     <div class="ep-head"><span class="pill post">POST</span><span class="path">/api/words/generate-topic/confirm</span>
-      <span class="pill auth-pill">Bearer</span><span class="name">Thêm từ đã sinh vào sổ — ghi word/word_value</span></div>
+      <span class="pill auth-pill">Bearer</span><span class="name">Thêm từ đã chọn vào sổ — ghi word/word_value</span></div>
     <div class="ep-body">
       <div class="blk"><h4>Request body</h4>
         <table><tr><th>Trường</th><th>Kiểu</th><th>Ràng buộc</th></tr>
-        <tr><td><code>words</code></td><td><span class="k">string[]</span></td><td>1–20 phần tử; mỗi phần tử tối đa 255 ký tự; là các từ tiếng Anh người dùng chọn từ màn hình đề xuất</td></tr></table>
-        <div class="note" style="margin-top:10px">Bước 2 của luồng 2 bước (§13.12): mỗi từ cache-first — cache còn → dùng lại; cache mất (sự cố) → gọi AI sinh nghĩa lại — rồi <b>một transaction duy nhất</b> ghi vào sổ, mỗi từ mới có <code>reviewCount = 0</code>, <code>nextReview = createdAt</code> → đến hạn ôn <b>ngay</b>. AI ở ngoài transaction, <code>UNIQUE (user_id, english)</code> là lớp chặn race cuối.</div></div>
+        <tr><td><code>words</code></td><td><span class="k">WordForm[]</span></td><td>1–20 phần tử (<code>@NotEmpty</code>, <code>@Size(max=20)</code>); mỗi phần tử là một <code>WordForm</code> <b>giống hệt §w-create</b> (<code>@Valid</code>): <code>english</code>, <code>level</code> (nullable), <code>values[]</code> (vietnamese, example, exampleTranslation, pronunciation, partOfSpeech — <code>id</code> bị bỏ qua)</td></tr></table>
+        <div class="note" style="margin-top:10px">Bước 2 của luồng 2 bước (§13.12): máy chủ <b>tin dữ liệu gửi lên</b> — <b>không đọc word_cache, không gọi AI</b>. Chuẩn hóa + lọc từ sai định dạng/trùng trong lô/đã có trong sổ (bỏ qua, không hủy cả lô) rồi <b>một transaction duy nhất</b> ghi vào sổ, mỗi từ mới có <code>reviewCount = 0</code>, <code>nextReview = createdAt</code> → đến hạn ôn <b>ngay</b>. <code>UNIQUE (user_id, english)</code> là lớp chặn race cuối.</div></div>
       <div class="blk ret"><h4>Response</h4>
         <div class="ret-row"><span class="pill s-ok">201</span><div class="shape"><div class="t"><b>SuccessResponse&lt;List&lt;WordDto&gt;&gt;</b></div>
           <pre>{ <span class="key">"message"</span>: <span class="s">"Thêm từ theo chủ đề thành công"</span>, <span class="key">"data"</span>: [ <span class="c">/* WordDto */</span> ] }</pre></div></div>
         <div class="ret-row"><span class="pill s-400">400</span><div class="shape"><div class="t"><b>ValidationErrorResponse</b> — "Danh sách từ không được để trống" / "Chỉ được thêm tối đa 20 từ mỗi lần"</div></div></div>
-        <div class="ret-row"><span class="pill s-400">400</span><div class="shape"><div class="t"><b>ErrorResponse</b> — "Từ hoặc cụm từ gửi lên không phải một từ tiếng Anh hợp lệ"</div></div></div>
-        <div class="ret-row"><span class="pill s-502">502</span><div class="shape"><div class="t"><b>ErrorResponse</b> — "Dịch vụ AI tạm thời không khả dụng"</div></div></div>
+        <div class="ret-row"><span class="pill s-400">400</span><div class="shape"><div class="t"><b>ErrorResponse</b> — "Từ hoặc cụm từ gửi lên không phải một từ tiếng Anh hợp lệ" (sai định dạng → toàn request)</div></div></div>
       </div>
       <div class="note" style="margin:10px 12px">Từ đã có trong sổ hoặc trùng trong lô <b>bị bỏ qua, không hủy cả lô</b>; response chỉ chứa các từ <b>được thêm</b> trong lần gọi này.</div>
     </div>

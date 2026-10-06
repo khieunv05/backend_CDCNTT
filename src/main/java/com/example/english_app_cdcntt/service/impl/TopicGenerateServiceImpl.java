@@ -7,10 +7,10 @@ import com.example.english_app_cdcntt.entity.WordCache;
 import com.example.english_app_cdcntt.exception.AiServiceException;
 import com.example.english_app_cdcntt.exception.InvalidTopicException;
 import com.example.english_app_cdcntt.exception.InvalidWordException;
+import com.example.english_app_cdcntt.form.WordForm;
 import com.example.english_app_cdcntt.mapper.WordCacheMapper;
 import com.example.english_app_cdcntt.repository.WordRepository;
 import com.example.english_app_cdcntt.service.AiClient;
-import com.example.english_app_cdcntt.service.GenerateService;
 import com.example.english_app_cdcntt.service.TopicGenerateService;
 import com.example.english_app_cdcntt.service.TopicTxService;
 import com.example.english_app_cdcntt.service.WordCacheTxService;
@@ -31,9 +31,10 @@ import org.springframework.stereotype.Service;
  * §7.1 (act-20 split flow) — the non-transactional half of the two topic endpoints.
  * Step 1 (generate-topic): normalize → AI topic check (else 400 before any DB access) →
  * feed the notebook's current words to the AI as the exclusion list → AI proposes 10 words →
- * cache-first each accepted word; the notebook is NOT touched. Step 2 (confirm): every picked
- * word goes through the single-word generate flow (cache row guaranteed, a vanished row is
- * re-asked to the AI), then the one write transaction adds the notebook rows.
+ * cache-first each accepted word; the notebook is NOT touched. Step 2 (confirm): the user
+ * sends back full {@link WordForm} payloads and confirm trusts them (user decision
+ * 2026-10-05) — no cache lookup, no AI call, only shape validation and dedupe, then the one
+ * write transaction adds the notebook rows.
  */
 @Slf4j
 @Service
@@ -48,7 +49,6 @@ public class TopicGenerateServiceImpl implements TopicGenerateService {
     private final WordRepository wordRepository;
     private final WordCacheTxService wordCacheTxService;
     private final WordCacheMapper wordCacheMapper;
-    private final GenerateService generateService;
     private final TopicTxService topicTxService;
 
     @Override
@@ -106,24 +106,25 @@ public class TopicGenerateServiceImpl implements TopicGenerateService {
     }
 
     @Override
-    public List<WordDto> confirmTopicWords(Long userId, List<String> rawWords) {
-        // Phase A (§13.12: the AI stays outside transactions) — make sure every picked word
-        // has a cache row by reusing the exact single-word generate flow; a word whose row
-        // vanished is re-asked to the AI. word_cache is permanent shared data, so a miss is
-        // an incident, and the phase still recovers from it.
+    public List<WordDto> confirmTopicWords(Long userId, List<WordForm> forms) {
+        // Phase A — validate + dedupe the WordForm payloads the user reviewed on screen.
+        // Per the user decision of 2026-10-05 the confirm step trusts this payload: it does
+        // NOT consult word_cache (word_cache stays step-1-only shared data) and never calls
+        // the AI, so this phase is plain CPU work and the AI stays outside transactions.
         Set<String> keys = new LinkedHashSet<>();
-        for (String raw : rawWords) {
-            String english = normalizeEnglish(raw);
+        List<WordForm> unique = new ArrayList<>();
+        for (WordForm form : forms) {
+            String english = normalizeEnglish(form.english());
             if (english.isEmpty() || english.length() > 255
                     || !WORD_OR_PHRASE.matcher(english).matches()) {
                 throw new InvalidWordException();
             }
             if (keys.add(english)) {
-                generateService.generateWord(english);
+                unique.add(form);
             }
         }
         // Phase B — the single write transaction that adds the notebook rows.
-        return topicTxService.addWordsFromCache(userId, List.copyOf(keys));
+        return topicTxService.addWords(userId, List.copyOf(unique));
     }
 
     /** Collapse whitespace runs, keep the caller's casing (a topic may be Vietnamese). */

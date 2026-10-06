@@ -155,21 +155,32 @@ Body:
 
 ### 3.9. Thêm từ đã sinh vào sổ — `POST /api/words/generate-topic/confirm`
 
-Bước 2 của luồng 2 bước (act-20): người dùng xem màn hình đề xuất, chọn từ, rồi xác nhận —
-**lúc này mới ghi `word`/`word_value`**.
+Bước 2 của luồng 2 bước (act-20): người dùng xem màn hình đề xuất, chọn/sửa từ, rồi xác nhận —
+**lúc này mới ghi `word`/`word_value`**. Body là danh sách `WordForm` **giống hệt §3.3
+(thêm từ thủ công)**: máy chủ tin dữ liệu gửi lên, **không đọc `word_cache` và không gọi AI**.
 
 Body:
 ```json
-{ "words": ["airport", "hotel", "luggage"] }
+{
+  "words": [
+    { "english": "airport", "level": "B1", "values": [
+      { "vietnamese": "sân bay", "example": "I fly.", "exampleTranslation": "Tôi bay.",
+        "pronunciation": "/ˈeəpɔːt/", "partOfSpeech": "NOUN" } ] },
+    { "english": "hotel", "level": "A2", "values": [
+      { "vietnamese": "khách sạn", "example": "A hotel.", "exampleTranslation": "Một khách sạn.",
+        "pronunciation": "/həʊˈtel/", "partOfSpeech": "NOUN" } ] }
+  ]
+}
 ```
-- Ràng buộc: `words` 1–20 phần tử, mỗi phần tử tối đa 255 ký tự (chuẩn hóa như §2).
-- Flow (§13.12): mỗi từ cache-first — cache còn → dùng lại; cache mất (sự cố) → gọi AI sinh
-  nghĩa lại — sau đó **một transaction duy nhất** ghi vào sổ, mỗi từ mới có `reviewCount = 0`
+- Ràng buộc: `words` 1–20 phần tử (`@NotEmpty`, `@Size(max = 20)`), mỗi phần tử là một
+  `WordForm` hợp lệ theo §3.3 (`@Valid`, `id` trong `values` bị bỏ qua).
+- Flow (§13.12): chuẩn hóa + lọc từ sai định dạng/trùng trong lô/đã có trong sổ (bỏ qua, không
+  hủy cả lô) rồi **một transaction duy nhất** ghi vào sổ, mỗi từ mới có `reviewCount = 0`
   (đến hạn ôn ngay). `UNIQUE (user_id, english)` là lớp chặn race cuối.
-- Từ đã có trong sổ hoặc trùng trong lô **bị bỏ qua, không hủy cả lô**.
+- Từ gửi lên **không phải từ tiếng Anh hợp lệ** (sai định dạng) → **400 toàn request**.
 
 **201** `SuccessResponse<List<WordDto>>`: `{ "message": "Thêm từ theo chủ đề thành công", "data": [WordDto] }`
-**400** validation hoặc `{ "message": "Từ hoặc cụm từ gửi lên không phải một từ tiếng Anh hợp lệ" }` · **502** lỗi AI.
+**400** validation hoặc `{ "message": "Từ hoặc cụm từ gửi lên không phải một từ tiếng Anh hợp lệ" }`.
 
 ## 4. Đoạn văn — `/api/phrases`
 
@@ -222,11 +233,12 @@ curl -s -X POST http://localhost:8080/api/words -H "Authorization: Bearer $TOKEN
      -H "Content-Type: application/json" \
      -d '{"english":"serendipity","level":"B2","values":[{"vietnamese":"sự tình cờ may mắn"}]}'
 
-# 3) Sinh 10 từ theo chủ đề, xem đề xuất rồi xác nhận thêm vào sổ
+# 3) Sinh 10 từ theo chủ đề, xem đề xuất rồi xác nhận thêm vào sổ (danh sách WordForm như bước 2)
 curl -s -X POST http://localhost:8080/api/words/generate-topic -H "Authorization: Bearer $TOKEN" \
      -H "Content-Type: application/json" -d '{"topic":"Du lịch"}'
 curl -s -X POST http://localhost:8080/api/words/generate-topic/confirm -H "Authorization: Bearer $TOKEN" \
-     -H "Content-Type: application/json" -d '{"words":["airport","hotel","luggage"]}'
+     -H "Content-Type: application/json" \
+     -d '{"words":[{"english":"airport","level":"B1","values":[{"vietnamese":"sân bay","example":"I fly.","exampleTranslation":"Tôi bay.","pronunciation":"/ˈeəpɔːt/","partOfSpeech":"NOUN"}]}]}'
 
 # 4) Ôn tập
 curl -s -X POST http://localhost:8080/api/words/review -H "Authorization: Bearer $TOKEN" \

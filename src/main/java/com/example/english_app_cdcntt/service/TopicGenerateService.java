@@ -2,6 +2,7 @@ package com.example.english_app_cdcntt.service;
 
 import com.example.english_app_cdcntt.dto.GeneratedWordDto;
 import com.example.english_app_cdcntt.dto.WordDto;
+import com.example.english_app_cdcntt.form.WordForm;
 import java.util.List;
 
 /**
@@ -9,7 +10,7 @@ import java.util.List;
  * OUTSIDE any transaction: AI calls are the long part (§13.12). Step 1, POST
  * /api/words/generate-topic, only proposes and caches; step 2, POST
  * /api/words/generate-topic/confirm, is the single write transaction owned by
- * {@link TopicTxService#addWordsFromCache}.
+ * {@link TopicTxService#addWords}.
  */
 public interface TopicGenerateService {
 
@@ -31,18 +32,16 @@ public interface TopicGenerateService {
     List<GeneratedWordDto> generateTopicWords(Long userId, String rawTopic);
 
     /**
-     * Step 2 — add the words the user picked on screen into the notebook. Phase A (no tx):
-     * every normalized key is pushed through the single-word generate flow, so a word whose
-     * cache row vanished is re-asked to the AI (§13.12: word_cache is permanent, a miss is an
-     * incident). Phase B: one write transaction via
-     * {@link TopicTxService#addWordsFromCache}.
+     * Step 2 — add the words the user picked on screen into the notebook. Per the user
+     * decision of 2026-10-05 the body carries full {@link WordForm} payloads and confirm
+     * trusts them: Phase A (no tx) normalizes each english, validates the stored shape
+     * (else 400) and dedupes in the given order — NO cache lookup, NO AI call. Phase B: one
+     * write transaction via {@link TopicTxService#addWords}.
      *
      * @return the {@code WordDto} of each word ADDED by this call, in the given order;
      *         already-owned or repeated words are skipped, not a batch abort (§13.12)
      * @throws com.example.english_app_cdcntt.exception.InvalidWordException
      *         when a picked value is not a valid single English word/phrase (contract 400)
-     * @throws com.example.english_app_cdcntt.exception.AiServiceException
-     *         when a cache miss cannot be re-filled (contract 502, no notebook change)
      */
-    List<WordDto> confirmTopicWords(Long userId, List<String> rawWords);
+    List<WordDto> confirmTopicWords(Long userId, List<WordForm> forms);
 }

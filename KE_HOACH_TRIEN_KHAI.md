@@ -225,7 +225,7 @@ Ví dụ response tạo từ:
 | 13 | POST `/api/phrases` | 201 SuccessResponse<PhraseDto>: `Thêm đoạn văn thành công` | 400 `Đoạn văn gửi lên không hợp lệ`; 502 lỗi AI |
 | 14 | DELETE `/api/phrases/{id}` | 200 `Xóa đoạn văn thành công` | 403 `Không có quyền xóa đoạn văn này` |
 | 15 | POST `/api/words/generate-topic` | 200 SuccessResponse<List<GeneratedWordDto>>: `Đã sinh từ theo chủ đề` — chỉ đề xuất + ghi cache, không đụng sổ (id null) | 400 `Chủ đề không hợp lệ, vui lòng nhập lại`; 502 lỗi AI |
-| 16 | POST `/api/words/generate-topic/confirm` | 201 SuccessResponse<List<WordDto>>: `Thêm từ theo chủ đề thành công` — data là các từ vừa thêm vào sổ | 400 `Từ hoặc cụm từ gửi lên không phải một từ tiếng Anh hợp lệ`; 502 lỗi AI |
+| 16 | POST `/api/words/generate-topic/confirm` | 201 SuccessResponse<List<WordDto>>: `Thêm từ theo chủ đề thành công` — data là các từ vừa thêm vào sổ | 400 `Từ hoặc cụm từ gửi lên không phải một từ tiếng Anh hợp lệ` |
 
 Tất cả endpoint protected còn có nhánh 401 chung. Lỗi AI luôn dùng message `Dịch vụ AI tạm thời không khả dụng`.
 
@@ -338,12 +338,11 @@ API này **không idempotent**: hai request hợp lệ tuần tự là hai lần
   5. Từng từ cache-first: MISS thì lưu `WordCache` + `word_cache_values` (HIT dùng lại cache sẵn có, không ghi đè); race `UNIQUE (english)` → đọc lại row thắng.
   6. **Không tạo `Word`/`word_values` ở bước này** — sổ từ không đổi.
 - **200** sau khi đề xuất xong: `SuccessResponse<List<GeneratedWordDto>>` với message `Đã sinh từ theo chủ đề`, data là các từ đề xuất (≤10), id `null` vì chưa thuộc sổ của ai.
-- **Bước 2 — xác nhận: `POST /api/words/generate-topic/confirm`** (protected, row 16). Form `TopicConfirmForm(List<String> words)` — 1–20 từ người dùng chọn từ màn hình đề xuất, mỗi từ ≤255 ký tự. Flow:
-  1. Chuẩn hóa từng từ, gộp trùng; từ sai shape → 400 `Từ hoặc cụm từ gửi lên không phải một từ tiếng Anh hợp lệ`.
-  2. Từng từ đi qua flow generate-word đơn (§6): cache còn → dùng; cache mất (sự cố) → gọi AI sinh nghĩa lại — AI vẫn ngoài transaction.
-  3. Một transaction ghi duy nhất: với mỗi từ — kiểm tra đã có trong sổ (bỏ qua nếu có), lưu `Word` (`reviewCount=0`, `nextReview=createdAt=updatedAt=now` như §6.2 POST) + `word_values` theo cache; `UNIQUE (user_id, english)` là lớp chặn race cuối.
+- **Bước 2 — xác nhận: `POST /api/words/generate-topic/confirm`** (protected, row 16). Form `TopicConfirmForm(List<@Valid WordForm> words)` — 1–20 `WordForm` **giống hệt §6 (thêm từ thủ công)**: `english`, `level` (nullable), `values[]` (vietnamese, example, exampleTranslation, pronunciation, partOfSpeech; `id` bị bỏ qua). Máy chủ **tin dữ liệu gửi lên** — không đọc `word_cache`, không gọi AI. Flow:
+  1. Chuẩn hóa từng `english`, gộp trùng (giữ form đầu); từ sai shape → 400 `Từ hoặc cụm từ gửi lên không phải một từ tiếng Anh hợp lệ`.
+  2. Một transaction ghi duy nhất: với mỗi từ — kiểm tra đã có trong sổ (bỏ qua nếu có), lưu `Word` (`reviewCount=0`, `nextReview=createdAt=updatedAt=now` như §6.2 POST) + `word_values` theo form gửi lên; `UNIQUE (user_id, english)` là lớp chặn race cuối.
 - **201** sau commit: `SuccessResponse<List<WordDto>>` với message `Thêm từ theo chủ đề thành công`, data là các từ thực sự thêm mới trong lần gọi này.
-- Nhánh 400/502 ở cả hai bước không tạo word; bước 1 có thể tạo cache (dữ liệu dùng chung), bước 2 không đổi gì khi fail trước transaction.
+- Nhánh 400 ở cả hai bước không tạo word; bước 1 có thể tạo cache (dữ liệu dùng chung), bước 2 không đổi gì khi fail trước transaction.
 
 ---
 
@@ -538,8 +537,8 @@ logging.level.com.example.english_app_cdcntt: INFO
 
 1. Form/DTO `TopicForm`, prompt xác nhận chủ đề + sinh 10 từ, tái dùng AiClient/RestClient adapter và cache transaction helper của Phase 4. — xong: `AiClient.checkTopic`/`generateTopicWords` + adapter `LlmAiClient`, prompt dùng topic chuẩn hóa và exclude list từ đã có.
 2. Bước 1 `POST /api/words/generate-topic`: lọc trùng, cache-first từng từ, **chỉ ghi cache, không đụng sổ** — xong: `TopicGenerateServiceImpl` (chuẩn hóa → checkTopic → exclude → AI → lọc trùng → cache-first → `GeneratedWordDto` id null), trả 200 `Đã sinh từ theo chủ đề`.
-3. Bước 2 `POST /api/words/generate-topic/confirm` (row 16): người dùng chọn từ → `TopicConfirmForm` (1–20 từ) → `TopicGenerateServiceImpl.confirmTopicWords` (Phase A: mỗi từ qua generate-word đơn, cache MISS → AI sinh lại) → `TopicTxServiceImpl.addWordsFromCache` (1 tx: skip owned/duplicate, `Word` mới `reviewCount=0`, due ngay) — 201 `Thêm từ theo chủ đề thành công`; `InvalidTopicException` → 400, `InvalidWordException` → 400.
-4. **DoD:** chủ đề sai → 400 và DB không đổi; AI fail/schema sai → 502 và DB không đổi (cả 2 bước); từ trùng sai shape/đã có trong sổ bị bỏ qua nhưng các từ mới vẫn lưu; từ mới có `reviewCount=0` và due ngay; bước 1 không tạo `Word`; bước 2 trả `SuccessResponse<List<WordDto>>`. — đạt: unit + controller test cho đầy đủ nhánh trên, bộ 292 test xanh (`./mvnw test`).
+3. Bước 2 `POST /api/words/generate-topic/confirm` (row 16): người dùng chọn/sửa từ → `TopicConfirmForm` (1–20 `WordForm` như create-word, `@Valid`) → `TopicGenerateServiceImpl.confirmTopicWords` (Phase A: chuẩn hóa, gộp trùng, lọc sai shape — **không cache, không AI**) → `TopicTxServiceImpl.addWords` (1 tx: skip owned/duplicate, `Word` mới `reviewCount=0`, due ngay, `word_values` theo form gửi lên) — 201 `Thêm từ theo chủ đề thành công`; `InvalidTopicException` → 400, `InvalidWordException` → 400.
+4. **DoD:** chủ đề sai → 400 và DB không đổi; AI fail/schema sai ở bước 1 → 502 và DB không đổi; từ sai shape/đã có trong sổ/trùng lô ở bước 2 bị bỏ qua nhưng các từ hợp lệ vẫn lưu; từ mới có `reviewCount=0` và due ngay; bước 1 không tạo `Word`; bước 2 không cache/không AI, lưu theo `WordForm` gửi lên và trả `SuccessResponse<List<WordDto>>`. — đạt: unit + controller test cho đầy đủ nhánh trên, bộ 291 test xanh (`./mvnw test`).
 
 **Ước lượng sơ bộ:** 8–12 ngày làm việc cho một người đã quen stack, cộng dự phòng 20–30% cho tích hợp/provider và xử lý concurrency. Chỉ tính backend; cần hiệu chỉnh sau Phase 0, không coi đây là cam kết tiến độ.
 
@@ -579,7 +578,7 @@ logging.level.com.example.english_app_cdcntt: INFO
 9. **Score:** chỉ số nguyên 0..10; AI sai → 502, không sửa điểm bằng clamp.
 10. **Message:** chuỗi trong §4/§9 là contract kiểm thử backend; không giả định client phải suy luận nghiệp vụ từ text tiếng Việt.
 11. **Không tự mở rộng:** chưa thêm phân trang, cache TTL, idempotency key, admin, OCR/server push; khi mở rộng cần cập nhật contract và tests.
-12. **Thêm từ theo chủ đề (act-20, bổ sung theo yêu cầu user 2026-10-05, tách 2 bước 2026-10-05):** diagram mô tả "tránh trùng danh sách từ đã gửi" ở mức ý định AI; chốt lọc trùng theo khóa chuẩn hóa trước khi lưu — từ trùng bị bỏ qua thay vì hủy cả lô, UNIQUE `(user_id, english)` là lớp chặn cuối. Gọi AI (xác nhận chủ đề, sinh từ, sinh lại nghĩa khi cache mất) ngoài transaction; bước confirm lưu cả lô trong một transaction ghi. Tách 2 bước theo yêu cầu user: `generate-topic` chỉ đề xuất + ghi cache (200, `GeneratedWordDto` id null), `/generate-topic/confirm` mới ghi `word`/`word_value` (201, `SuccessResponse<List<WordDto>>`). `word_cache` là dữ liệu dùng chung vĩnh viễn (không TTL, không dọn — mọi user trỏ vào để tiết kiệm token); cache MISS ở bước confirm là sự cố, xử lý bằng cách gọi AI sinh nghĩa lại cho từ đó, không fail cả lô. Endpoint đưa tổng số lên 16.
+12. **Thêm từ theo chủ đề (act-20, bổ sung theo yêu cầu user 2026-10-05, tách 2 bước 2026-10-05):** diagram mô tả "tránh trùng danh sách từ đã gửi" ở mức ý định AI; chốt lọc trùng theo khóa chuẩn hóa trước khi lưu — từ trùng bị bỏ qua thay vì hủy cả lô, UNIQUE `(user_id, english)` là lớp chặn cuối. Gọi AI (xác nhận chủ đề, sinh từ) ngoài transaction; bước confirm lưu cả lô trong một transaction ghi. Tách 2 bước theo yêu cầu user: `generate-topic` chỉ đề xuất + ghi cache (200, `GeneratedWordDto` id null), `/generate-topic/confirm` mới ghi `word`/`word_value` (201, `SuccessResponse<List<WordDto>>`). Confirm nhận **danh sách `WordForm` đầy đủ như create-word** (đổi theo yêu cầu user cùng ngày): máy chủ tin payload gửi lên, **không đọc cache và không gọi AI** — nghĩa/level/values lấy theo form, từ sai shape → 400 toàn request; `word_cache` là dữ liệu dùng chung vĩnh viễn (không TTL, không dọn — mọi user trỏ vào để tiết kiệm token). Endpoint đưa tổng số lên 16.
 
 ---
 

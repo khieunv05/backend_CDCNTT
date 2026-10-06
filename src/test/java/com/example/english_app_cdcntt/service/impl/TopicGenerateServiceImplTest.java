@@ -23,10 +23,11 @@ import com.example.english_app_cdcntt.enums.PartOfSpeech;
 import com.example.english_app_cdcntt.exception.AiServiceException;
 import com.example.english_app_cdcntt.exception.InvalidTopicException;
 import com.example.english_app_cdcntt.exception.InvalidWordException;
+import com.example.english_app_cdcntt.form.WordForm;
+import com.example.english_app_cdcntt.form.WordValueForm;
 import com.example.english_app_cdcntt.mapper.WordCacheMapper;
 import com.example.english_app_cdcntt.repository.WordRepository;
 import com.example.english_app_cdcntt.service.AiClient;
-import com.example.english_app_cdcntt.service.GenerateService;
 import com.example.english_app_cdcntt.service.TopicTxService;
 import com.example.english_app_cdcntt.service.WordCacheTxService;
 import java.time.Instant;
@@ -45,8 +46,10 @@ import org.mockito.quality.Strictness;
 
 /**
  * Plain unit tests for the §7.1 split flow. Step 1 (generate-topic) proposes and caches only —
- * the notebook and the tx service are never touched; step 2 (confirm) reuses the single-word
- * generate flow per picked word and hands the normalized keys to the one write transaction.
+ * the notebook and the tx service are never touched; step 2 (confirm) trusts the WordForm
+ * payloads the user picked (user decision 2026-10-05: no cache lookup, no AI call) — it only
+ * normalizes, validates the stored shape and dedupes, then hands the forms to the one write
+ * transaction.
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -62,9 +65,6 @@ class TopicGenerateServiceImplTest {
     private WordCacheTxService wordCacheTxService;
 
     @Mock
-    private GenerateService generateService;
-
-    @Mock
     private TopicTxService topicTxService;
 
     private final WordCacheMapper wordCacheMapper = new WordCacheMapper();
@@ -74,7 +74,7 @@ class TopicGenerateServiceImplTest {
     @BeforeEach
     void setUp() {
         topicGenerateService = new TopicGenerateServiceImpl(aiClient, wordRepository,
-                wordCacheTxService, wordCacheMapper, generateService, topicTxService);
+                wordCacheTxService, wordCacheMapper, topicTxService);
         when(wordRepository.findByUser_IdOrderByIdAsc(1L)).thenReturn(List.of());
         when(wordCacheTxService.findCached(anyString())).thenReturn(Optional.empty());
     }
@@ -158,8 +158,8 @@ class TopicGenerateServiceImplTest {
         verify(wordCacheTxService, never()).saveNew(eq("luggage"), any(AiClient.GeneratedMeaning.class));
         assertThat(result).containsExactly(airportDto,
                 wordCacheMapper.toGenerated(cachedWord("luggage")));
-        // step 1 NEVER touches the notebook: no tx service, no single-word generate
-        verifyNoInteractions(topicTxService, generateService);
+        // step 1 NEVER touches the notebook and never runs the single-word generate flow
+        verifyNoInteractions(topicTxService);
     }
 
     @Test
@@ -197,51 +197,54 @@ class TopicGenerateServiceImplTest {
 
     // ---------- step 2: POST /api/words/generate-topic/confirm ----------
 
+    private WordForm wordForm(String english, Level level, String vietnamese) {
+        return new WordForm(english, level, List.of(new WordValueForm(
+                null, vietnamese, "example", "dịch", "/ipa/", PartOfSpeech.NOUN)));
+    }
+
     @Test
-    @DisplayName("happy path bước 2: chuẩn hóa + gộp trùng, đẩy từng từ qua generate-word (cache-first), 1 tx thêm vào sổ")
-    void confirmGeneratesThenAddsInOneTx() {
+    @DisplayName("happy path bước 2: normalize + gộp trùng giữ form đầu, KHÔNG đụng cache/AI, 1 tx thêm vào sổ")
+    void confirmAddsWordFormsInOneTx() {
         WordDto airport = new WordDto(10L, "airport", Level.B1, 0,
                 Instant.parse("2026-01-15T08:00:00Z"), null, null, List.of());
         WordDto hotel = new WordDto(11L, "hotel", Level.A2, 0,
                 Instant.parse("2026-01-15T08:00:00Z"), null, null, List.of());
-        when(topicTxService.addWordsFromCache(1L, List.of("airport", "hotel")))
+        // duplicates after normalize keep the FIRST form (its level/values win downstream)
+        when(topicTxService.addWords(1L, List.of(
+                wordForm("  Airport  ", Level.B1, "sân bay"),
+                wordForm("hotel", Level.A2, "khách sạn"))))
                 .thenReturn(List.of(airport, hotel));
 
         List<WordDto> result = topicGenerateService.confirmTopicWords(
-                1L, List.of("  Airport  ", "airport", "hotel"));
+                1L, List.of(
+                        wordForm("  Airport  ", Level.B1, "sân bay"),
+                        wordForm("airport", Level.C1, "phi trường"),
+                        wordForm("hotel", Level.A2, "khách sạn")));
 
-        // deduplicated after normalize; each key goes through the single-word flow so a
-        // vanished cache row is re-asked to the AI inside that flow (§13.12)
-        verify(generateService, times(1)).generateWord("airport");
-        verify(generateService, times(1)).generateWord("hotel");
-        verify(topicTxService).addWordsFromCache(1L, List.of("airport", "hotel"));
+        // deduplicated after normalize; the payload is trusted: no cache lookup, no AI call
+        verify(topicTxService).addWords(1L, List.of(
+                wordForm("  Airport  ", Level.B1, "sân bay"),
+                wordForm("hotel", Level.A2, "khách sạn")));
+        verifyNoInteractions(aiClient, wordRepository, wordCacheTxService);
         assertThat(result).containsExactly(airport, hotel);
     }
 
     @Test
-    @DisplayName("confirm: từ bấm vào sai shape → InvalidWordException 400, không cache không vào sổ")
+    @DisplayName("confirm: từ bấm vào sai shape → InvalidWordException 400, không vào sổ")
     void confirmInvalidWordFailsFast() {
-        assertThatThrownBy(() -> topicGenerateService.confirmTopicWords(1L, List.of("not a word!")))
+        assertThatThrownBy(() -> topicGenerateService.confirmTopicWords(
+                1L, List.of(wordForm("not a word!", Level.A2, "sai"))))
                 .isInstanceOf(InvalidWordException.class)
                 .hasMessage("Từ hoặc cụm từ gửi lên không phải một từ tiếng Anh hợp lệ");
-        verifyNoInteractions(generateService, topicTxService);
+        verifyNoInteractions(topicTxService);
     }
 
     @Test
     @DisplayName("confirm: khoảng trắng → từ rỗng sau chuẩn hóa → InvalidWordException 400")
     void confirmBlankWordIsInvalid() {
-        assertThatThrownBy(() -> topicGenerateService.confirmTopicWords(1L, List.of("   ")))
+        assertThatThrownBy(() -> topicGenerateService.confirmTopicWords(
+                1L, List.of(wordForm("   ", Level.A2, "trống"))))
                 .isInstanceOf(InvalidWordException.class);
-        verifyNoInteractions(generateService, topicTxService);
-    }
-
-    @Test
-    @DisplayName("confirm: cache MISS phải gọi AI lại (generateWord ném 502) → 502, chưa vào sổ")
-    void confirmAiFailureOnCacheMissPropagates() {
-        when(generateService.generateWord("airport")).thenThrow(new AiServiceException("upstream"));
-
-        assertThatThrownBy(() -> topicGenerateService.confirmTopicWords(1L, List.of("airport")))
-                .isInstanceOf(AiServiceException.class);
         verifyNoInteractions(topicTxService);
     }
 }
