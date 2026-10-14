@@ -1,3 +1,9 @@
+server:
+  tomcat:
+    # Giữ keep-alive 5 phút để client (Postman/tool) tái sử dụng connection an toàn;
+    # mặc định 20s khiến request gửi sau khi idle bị ECONNRESET trên Windows.
+    keep-alive-timeout: 5m
+
 spring:
   application:
     name: english_app_cdcntt
@@ -25,8 +31,8 @@ app:
     base-url: ${AI_BASE_URL}
     api-key: ${AI_API_KEY}
     model: ${AI_MODEL}
-    connect-timeout: 10s
-    read-timeout: 30s
+    connect-timeout: 60s
+    read-timeout: 60s
   cleanup:
     enabled: true
     cron: "0 0 3 * * *"
