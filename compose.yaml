@@ -1,0 +1,102 @@
+# Docker Compose cho môi trường local của LEnglish backend.
+#
+#   docker compose up -d                        -> chỉ MySQL (app chạy bằng ./mvnw)
+#   docker compose --profile app up -d --build  -> MySQL + app trong container
+#   docker compose --profile tools up -d        -> thêm Adminer (xem DB bằng web)
+#
+# Toàn bộ giá trị lấy từ file .env cùng thư mục này (xem .env.example).
+# Hướng dẫn chi tiết: HUONG_DAN_DOCKER.md
+
+name: lenglish
+
+services:
+  # ------------------------------------------------------------------
+  # MySQL 8.0.43 — khớp phiên bản đã nghiệm thu của dự án.
+  # Nếu tag này không còn trên Docker Hub, đổi sang mysql:8.0.
+  # ------------------------------------------------------------------
+  db:
+    image: mysql:8.0.43
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+00:00
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Thiếu MYSQL_ROOT_PASSWORD trong .env}
+      MYSQL_DATABASE: ${APP_DB_NAME:-lenglish}
+      MYSQL_USER: ${APP_DB_USERNAME:-lenglish_app}
+      MYSQL_PASSWORD: ${APP_DB_PASSWORD:?Thiếu APP_DB_PASSWORD trong .env}
+      # Dùng bởi script docker/mysql/init/01-create-databases.sh
+      TEST_DB_NAME: ${TEST_DB_NAME:-lenglish_test}
+      TEST_DB_USERNAME: ${TEST_DB_USERNAME:-lenglish_test}
+      TEST_DB_PASSWORD: ${TEST_DB_PASSWORD:?Thiếu TEST_DB_PASSWORD trong .env}
+      TZ: UTC
+    ports:
+      # Giữ 3306 để `./mvnw verify` chạy được: MySqlTestConfiguration chỉ chấp nhận
+      # đúng jdbc:mysql://localhost:3306/lenglish_test.
+      - "${MYSQL_HOST_PORT:-3306}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      # Chỉ chạy khi volume dữ liệu còn trống (lần khởi tạo đầu tiên).
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - mysqladmin ping --host=127.0.0.1 --user=root --password="$$MYSQL_ROOT_PASSWORD" --silent
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 30s
+    networks:
+      - backend
+
+  # ------------------------------------------------------------------
+  # Ứng dụng Spring Boot đóng gói trong container (tuỳ chọn).
+  # Bật bằng: docker compose --profile app up -d --build
+  # ------------------------------------------------------------------
+  app:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_URL: "jdbc:mysql://db:3306/${APP_DB_NAME:-lenglish}?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true"
+      DB_USERNAME: ${APP_DB_USERNAME:-lenglish_app}
+      DB_PASSWORD: ${APP_DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      AI_BASE_URL: ${AI_BASE_URL}
+      AI_API_KEY: ${AI_API_KEY}
+      AI_MODEL: ${AI_MODEL}
+      TZ: UTC
+    ports:
+      - "${APP_HOST_PORT:-8080}:8080"
+    networks:
+      - backend
+
+  # ------------------------------------------------------------------
+  # Adminer — giao diện web xem/sửa DB (tuỳ chọn).
+  # Bật bằng: docker compose --profile tools up -d
+  # ------------------------------------------------------------------
+  adminer:
+    profiles: ["tools"]
+    image: adminer:4
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ADMINER_DEFAULT_SERVER: db
+    ports:
+      - "${ADMINER_HOST_PORT:-8081}:8080"
+    networks:
+      - backend
+
+volumes:
+  mysql-data:
+
+networks:
+  backend:

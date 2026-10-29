@@ -1,0 +1,24 @@
+# Không đưa những thứ này vào build context.
+target/
+.git/
+.gitignore
+.gitattributes
+.idea/
+.vscode/
+*.iml
+.env
+.env.*
+*.log
+build.log
+skills/
+.dsh-acl-report/
+.tmp/
+graphflow-out/
+.graphflow-cache/
+README.md
+HUONG_DAN_*.md
+KE_HOACH_*.md
+TIEN_DO_*.md
+API_REFERENCE.md
+api-reference.html
+plan.md

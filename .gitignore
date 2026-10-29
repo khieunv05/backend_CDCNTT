@@ -32,6 +32,12 @@ build/
 ### VS Code ###
 .vscode/
 
+### Docker / môi trường local ###
+# .env chứa mật khẩu MySQL và JWT secret của máy local: không commit.
+.env
+.env.local
+.env.*.local
+
 ### Scratch / tool artifacts (not part of the project) ###
 .tmp/
 graphflow-out/

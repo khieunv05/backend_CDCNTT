@@ -77,6 +77,11 @@ class ApiEndToEndIT {
         jdbc.update("DELETE FROM words WHERE user_id = (SELECT id FROM users WHERE username = ?)", username);
         jdbc.update("DELETE FROM refresh_tokens WHERE user_id = (SELECT id FROM users WHERE username = ?)", username);
         jdbc.update("DELETE FROM users WHERE username = ?", username);
+        // word_cache là bảng dùng chung, không gắn user: /api/words/generate (Order 5) ghi vào đây
+        // và commit thật. Không dọn thì trên DB mới tinh nó chiếm PRIMARY id=1, làm
+        // EnglishAppCdcnttApplicationIT (insert cứng id=1) vỡ với Duplicate entry '1'.
+        // word_cache_values tự xoá theo nhờ FK ON DELETE CASCADE.
+        jdbc.update("DELETE FROM word_cache WHERE english = ?", "serendipity");
     }
 
     private String bearer() {

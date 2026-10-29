@@ -30,7 +30,21 @@ trong `KE_HOACH_TRIEN_KHAI.md` (§4 API, §5 Bảo mật, §6 Nghiệp vụ, §7
 
 ## 3. Chạy dự án
 
-### 3.1. Chuẩn bị MySQL
+### 3.1. Dựng nhanh bằng Docker Compose (khuyến nghị cho máy mới)
+
+Máy mới chỉ cần Docker: MySQL 8.0.43 cùng database/tài khoản cho cả app và test
+được tạo tự động, không phải cài MySQL hay chạy SQL bằng tay.
+
+```bash
+cp .env.example .env                          # rồi điền mật khẩu + JWT_SECRET
+docker compose up -d                          # chỉ MySQL; app vẫn chạy bằng ./mvnw
+docker compose --profile app up -d --build    # tuỳ chọn: app chạy luôn trong container
+```
+
+Hướng dẫn đầy đủ (biến môi trường, integration test, xử lý sự cố):
+[`HUONG_DAN_DOCKER.md`](HUONG_DAN_DOCKER.md).
+
+### 3.2. Chuẩn bị MySQL thủ công (khi không dùng Docker)
 
 ```sql
 CREATE DATABASE lenglish CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
@@ -38,16 +52,19 @@ CREATE USER 'lenglish_app'@'localhost' IDENTIFIED BY '<mật khẩu app>';
 GRANT ALL PRIVILEGES ON lenglish.* TO 'lenglish_app'@'localhost';
 ```
 
-### 3.2. Biến môi trường bắt buộc
+### 3.3. Biến môi trường bắt buộc
 
 | Biến | Ý nghĩa |
 |---|---|
-| `DB_URL` | ví dụ `jdbc:mysql://localhost:3306/lenglish?serverTimezone=UTC&connectionTimeZone=UTC` |
+| `DB_URL` | ví dụ `jdbc:mysql://localhost:3306/lenglish?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true` |
 | `DB_USERNAME` / `DB_PASSWORD` | tài khoản app (không dùng root) |
-| `JWT_SECRET` | khóa HS256, **≥ 64 ký tự** (§14) |
-| `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL` | endpoint chat-completions tương thích OpenAI |
+| `JWT_SECRET` | Base64 của **≥ 32 byte** ngẫu nhiên (≥ 44 ký tự, §14) |
+| `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL` | endpoint chat-completions tương thích OpenAI; `AI_BASE_URL` phải là **https** tuyệt đối, không userinfo/query/fragment |
 
-### 3.3. Khởi động
+Dùng Docker thì các biến này nằm trong `.env` (`APP_DB_*`, `MYSQL_HOST_PORT`);
+`. .\scripts\dev-env.ps1` nạp chúng thành `DB_*` cho tiến trình Maven.
+
+### 3.4. Khởi động
 
 ```bash
 ./mvnw spring-boot:run   # hoặc: ./mvnw clean package && java -jar target/*.jar
@@ -112,3 +129,4 @@ src/test/java/com/example/english_app_cdcntt/
 - [`API_REFERENCE.md`](API_REFERENCE.md) — 14 endpoint: body, response, mã lỗi, ví dụ curl.
 - [`TIEN_DO_TRIEN_KHAI.md`](TIEN_DO_TRIEN_KHAI.md) — nhật ký tiến độ từng đợt.
 - [`HUONG_DAN_TEST_MYSQL.md`](HUONG_DAN_TEST_MYSQL.md) — dựng MySQL cho tầng IT.
+- [`HUONG_DAN_DOCKER.md`](HUONG_DAN_DOCKER.md) — dựng môi trường local bằng Docker Compose.
