@@ -142,6 +142,19 @@ class WordFlowIT {
     }
 
     @Test
+    @DisplayName("listWords returns the notebook newest first (created_at desc, id desc as tiebreaker)")
+    void list_newestFirst() {
+        wordService.createWord(aliceId, form("oldest", value("cũ nhất")));
+        wordService.createWord(aliceId, form("middle", value("ở giữa")));
+        wordService.createWord(aliceId, form("newest", value("mới nhất")));
+
+        // created_at is DATETIME(6), so two creates may share a timestamp; the id tiebreaker keeps
+        // the newer row first instead of leaving the order to the engine.
+        assertThat(wordService.listWords(aliceId)).extracting(WordDto::english)
+                .containsExactly("newest", "middle", "oldest");
+    }
+
+    @Test
     @DisplayName("create rejecting a meaning id stores nothing — validation runs before any insert")
     void create_meaningIdOnCreate_rejectedNothingStored() {
         int wordsBefore = wordRows(aliceId);
@@ -188,8 +201,11 @@ class WordFlowIT {
 
         List<WordDto> after = wordService.listWords(aliceId);
         assertThat(after).hasSize(2);
-        assertThat(after.get(0).english()).isEqualTo("alpha");
-        assertThat(after.get(0).values()).extracting(WordValueDto::vietnamese)
+        // The list is newest first, so alpha is no longer at index 0 — look it up by id.
+        WordDto unchanged = after.stream().filter(word -> word.id().equals(alpha.id()))
+                .findFirst().orElseThrow();
+        assertThat(unchanged.english()).isEqualTo("alpha");
+        assertThat(unchanged.values()).extracting(WordValueDto::vietnamese)
                 .containsExactly("thứ nhất");
     }
 

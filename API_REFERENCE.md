@@ -70,7 +70,7 @@ Body: `{ "refreshToken": "eyJ..." }` (không cần Bearer).
 ## 3. Từ vựng — `/api/words`
 
 ### 3.1. Danh sách — `GET /api/words`
-**200** `List<WordDto>`, sắp theo `id` tăng dần.
+**200** `List<WordDto>`, sắp theo `createdAt` giảm dần (mới nhất trước; trùng thời điểm thì `id` giảm dần).
 
 `WordDto`:
 ```json

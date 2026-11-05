@@ -111,9 +111,9 @@ class WordServiceImplTest {
     }
 
     @Test
-    @DisplayName("listWords maps the notebook query and orders meanings by id")
+    @DisplayName("listWords uses the newest-first query and maps meanings ordered by id")
     void listWordsMapsNotebook() {
-        when(wordRepository.findByUser_IdOrderByIdAsc(USER_ID))
+        when(wordRepository.findByUser_IdOrderByCreatedAtDescIdDesc(USER_ID))
                 .thenReturn(List.of(word(WORD_ID, "hello", value(2L, "chào"), value(1L, "xin chào"))));
 
         List<WordDto> words = wordService.listWords(USER_ID);
@@ -121,7 +121,7 @@ class WordServiceImplTest {
         assertThat(words).hasSize(1);
         assertThat(words.get(0).english()).isEqualTo("hello");
         assertThat(words.get(0).values()).extracting(WordValueDto::id).containsExactly(1L, 2L);
-        verify(wordRepository).findByUser_IdOrderByIdAsc(USER_ID);
+        verify(wordRepository).findByUser_IdOrderByCreatedAtDescIdDesc(USER_ID);
     }
 
     @Test

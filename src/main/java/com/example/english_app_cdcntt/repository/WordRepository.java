@@ -40,7 +40,16 @@ public interface WordRepository extends JpaRepository<Word, Long> {
     @EntityGraph(attributePaths = {"wordValues"})
     Page<Word> findByUser_Id(Long userId, Pageable pageable);
 
-    /** GET /api/words: the current user's notebook, meanings fetched, ordered by id (§6.2). */
+    /**
+     * GET /api/words: the current user's notebook, meanings fetched, newest first (§6.2).
+     * {@code id} is the tiebreaker so words created inside the same microsecond — a burst of
+     * creates, or the coarse clock of a test — still come back newest first instead of in whatever
+     * order InnoDB happens to return.
+     */
+    @EntityGraph(attributePaths = {"wordValues"})
+    List<Word> findByUser_IdOrderByCreatedAtDescIdDesc(Long userId);
+
+    /** Every word of the user with its meanings, ascending id — bulk cleanup and AI exclude lists. */
     @EntityGraph(attributePaths = {"wordValues"})
     List<Word> findByUser_IdOrderByIdAsc(Long userId);
 

@@ -200,8 +200,10 @@ class ApiEndToEndIT {
                 .expectStatus().isOk()
                 .expectBody()
                 .jsonPath("$.length()").isEqualTo(2)
-                .jsonPath("$[0].id").isEqualTo((int) wordId1)
-                .jsonPath("$[1].english").isEqualTo("ephemeral");
+                .jsonPath("$[0].id").isEqualTo((int) wordId2) // newest first
+                .jsonPath("$[0].english").isEqualTo("ephemeral")
+                .jsonPath("$[1].id").isEqualTo((int) wordId1)
+                .jsonPath("$[1].english").isEqualTo("serendipity");
         rest.get().uri("/api/words/due-count")
                 .header(HttpHeaders.AUTHORIZATION, bearer())
                 .exchange()

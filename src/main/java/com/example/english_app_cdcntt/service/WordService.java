@@ -16,7 +16,7 @@ import java.util.List;
  */
 public interface WordService {
 
-    /** §6.2 — the user's words ordered by id with their meanings; no pagination (array contract). */
+    /** §6.2 — the user's words newest first by {@code createdAt}, with their meanings; no pagination (array contract). */
     List<WordDto> listWords(Long userId);
 
     /** §6.2 — {@code nextReview <= now}; a word due exactly at {@code now} counts. */

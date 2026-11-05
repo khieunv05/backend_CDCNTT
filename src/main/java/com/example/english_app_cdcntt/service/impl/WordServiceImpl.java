@@ -49,9 +49,10 @@ public class WordServiceImpl implements WordService {
         this.clock = clock;
     }
 
+    /** §6.2 — the notebook newest first: {@code createdAt} desc, {@code id} desc as tiebreaker. */
     @Override
     public List<WordDto> listWords(Long userId) {
-        return wordRepository.findByUser_IdOrderByIdAsc(userId).stream()
+        return wordRepository.findByUser_IdOrderByCreatedAtDescIdDesc(userId).stream()
                 .map(WordMapper::toDto)
                 .toList();
     }
