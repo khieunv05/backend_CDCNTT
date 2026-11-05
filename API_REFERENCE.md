@@ -191,6 +191,7 @@ Body:
 ```json
 {
   "id": 5,
+  "title": "Luyện viết IELTS",
   "text": "I has went to school yesterday.",
   "correctedText": "I went to school yesterday.",
   "score": 4,
@@ -205,10 +206,11 @@ Body:
 ### 4.2. Chấm điểm & lưu — `POST /api/phrases`
 Body:
 ```json
-{ "text": "I has went to school yesterday." }
+{ "title": "Luyện viết IELTS", "text": "I has went to school yesterday." }
 ```
-- Ràng buộc: 10–5000 ký tự. AI chấm điểm rồi lưu `text + correctedText + score + errors` **nguyên tố**
-  (một transaction; lỗi AI → không lưu gì).
+- Ràng buộc: `title` bắt buộc 1–255 ký tự, `text` 10–5000 ký tự. AI chỉ chấm `text`; `title` được
+  lưu nguyên văn để hiển thị trong sổ. Kết quả `text + correctedText + score + errors` được lưu
+  **nguyên tố** (một transaction; lỗi AI → không lưu gì).
 - `score` là số nguyên 0–10 do AI trả về.
 
 **201** `SuccessResponse<PhraseDto>`: `{ "message": "Thêm đoạn văn thành công", "data": PhraseDto }`

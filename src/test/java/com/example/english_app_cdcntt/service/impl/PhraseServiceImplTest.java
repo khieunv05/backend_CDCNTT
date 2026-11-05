@@ -62,12 +62,12 @@ class PhraseServiceImplTest {
         }
     }
 
-    private final PhraseDto dto = new PhraseDto(1L, "I have went to the store yesterday.",
+    private final PhraseDto dto = new PhraseDto(1L, "Luyện viết IELTS", "I have went to the store yesterday.",
             "I went to the store yesterday.", 8, Instant.parse("2026-10-01T00:00:00Z"),
             List.of(new GrammarErrorDto("have went", "went", "Past simple, not present perfect.")));
 
     private static Phrase phrase() {
-        Phrase phrase = Phrase.create(user(USER_ID), "text", "corrected", 8);
+        Phrase phrase = Phrase.create(user(USER_ID), "Luyện viết IELTS", "text", "corrected", 8);
         ReflectionTestUtils.setField(phrase, "id", 7L);
         return phrase;
     }
@@ -83,7 +83,7 @@ class PhraseServiceImplTest {
         phraseService = new PhraseServiceImpl(
                 phraseRepository, phraseTxService, gradingService, phraseMapper);
  lenient().when(gradingService.grade(anyString())).thenReturn(goodGrading);
- lenient().when(phraseTxService.save(anyLong(), anyString(), any(GradingResult.class)))
+ lenient().when(phraseTxService.save(anyLong(), anyString(), anyString(), any(GradingResult.class)))
                 .thenReturn(dto);
  lenient().when(phraseMapper.toDto(any(Phrase.class))).thenReturn(dto);
     }
@@ -91,11 +91,11 @@ class PhraseServiceImplTest {
     @Test
     @DisplayName("create: grade trước rồi persist qua tx, trả DTO của tx")
     void createGradesThenPersists() {
-        PhraseDto result = phraseService.create(USER_ID, new PhraseForm("I have went to the store yesterday."));
+        PhraseDto result = phraseService.create(USER_ID, new PhraseForm("Luyện viết IELTS", "I have went to the store yesterday."));
 
         assertThat(result).isSameAs(dto);
         verify(gradingService).grade("I have went to the store yesterday.");
-        verify(phraseTxService).save(USER_ID, "I have went to the store yesterday.", goodGrading);
+        verify(phraseTxService).save(USER_ID, "Luyện viết IELTS", "I have went to the store yesterday.", goodGrading);
     }
 
     @Test
@@ -105,9 +105,9 @@ class PhraseServiceImplTest {
                 .thenThrow(new InvalidPhraseException());
 
         assertThatThrownBy(() -> phraseService.create(USER_ID,
-                new PhraseForm("just seven")))
+                new PhraseForm("Luyện viết IELTS", "just seven")))
                 .isInstanceOf(InvalidPhraseException.class);
-        verify(phraseTxService, never()).save(anyLong(), anyString(), any(GradingResult.class));
+        verify(phraseTxService, never()).save(anyLong(), anyString(), anyString(), any(GradingResult.class));
     }
 
     @Test
@@ -117,9 +117,9 @@ class PhraseServiceImplTest {
                 .thenThrow(new AiServiceException("AI request failed"));
 
         assertThatThrownBy(() -> phraseService.create(USER_ID,
-                new PhraseForm("Some long enough text here.")))
+                new PhraseForm("Luyện viết IELTS", "Some long enough text here.")))
                 .isInstanceOf(AiServiceException.class);
-        verify(phraseTxService, never()).save(anyLong(), anyString(), any(GradingResult.class));
+        verify(phraseTxService, never()).save(anyLong(), anyString(), anyString(), any(GradingResult.class));
     }
 
     @Test

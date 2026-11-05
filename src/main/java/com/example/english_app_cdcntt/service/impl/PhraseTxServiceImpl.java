@@ -24,10 +24,10 @@ public class PhraseTxServiceImpl implements PhraseTxService {
 
     @Override
     @Transactional
-    public PhraseDto save(Long userId, String text, GradingResult grading) {
+    public PhraseDto save(Long userId, String title, String text, GradingResult grading) {
         // §8.2:355 — the adapter guarantees a valid result here: the provider
         // "not a paragraph" flag became InvalidPhraseException upstream.
-        Phrase phrase = Phrase.create(userRepository.getReferenceById(userId), text,
+        Phrase phrase = Phrase.create(userRepository.getReferenceById(userId), title, text,
                 grading.correctedText(), grading.score());
         grading.errors().forEach(error -> phrase.addError(GrammarError.create(error.incorrect(),
                 error.correction(), error.explanation())));

@@ -64,13 +64,14 @@ class PhraseControllerTest {
     }
 
     private static String body() {
-        return "{\"text\":\"I have went to the store yesterday and buyed some apples.\"}";
+        return "{\"title\":\"Luyện viết IELTS\","
+                + "\"text\":\"I have went to the store yesterday and buyed some apples.\"}";
     }
 
     @Test
     @DisplayName("POST: 201 + SuccessResponse {message, data: PhraseDto}")
     void createReturns201() throws Exception {
-        PhraseDto dto = new PhraseDto(PHRASE_ID, "I have went...", "I went...", 8,
+        PhraseDto dto = new PhraseDto(PHRASE_ID, "Luyện viết IELTS", "I have went...", "I went...", 8,
                 null, List.of());
         when(phraseService.create(eq(USER_ID), any(PhraseForm.class))).thenReturn(dto);
 
@@ -78,6 +79,7 @@ class PhraseControllerTest {
                         .contentType(MediaType.APPLICATION_JSON).content(body()))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.message").value("Thêm đoạn văn thành công"))
+                .andExpect(jsonPath("$.data.title").value("Luyện viết IELTS"))
                 .andExpect(jsonPath("$.data.correctedText").value("I went..."))
                 .andExpect(jsonPath("$.data.score").value(8));
 
@@ -89,7 +91,33 @@ class PhraseControllerTest {
     void createTooShortText() throws Exception {
         mockMvc.perform(post("/api/phrases")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"text\":\"ngan\"}"))
+                        .content("{\"title\":\"Luyện viết IELTS\",\"text\":\"ngan\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Đoạn văn gửi lên không hợp lệ"));
+
+        verifyNoInteractions(phraseService);
+    }
+
+    @Test
+    @DisplayName("POST thiếu title → 400, không đụng service")
+    void createMissingTitle() throws Exception {
+        mockMvc.perform(post("/api/phrases")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\":\"I have went to the store yesterday.\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Đoạn văn gửi lên không hợp lệ"));
+
+        verifyNoInteractions(phraseService);
+    }
+
+    @Test
+    @DisplayName("POST title quá dài (>255) → 400, không đụng service")
+    void createTooLongTitle() throws Exception {
+        String longTitle = "x".repeat(256);
+        mockMvc.perform(post("/api/phrases")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"title\":\"" + longTitle
+                                + "\",\"text\":\"I have went to the store yesterday.\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("Đoạn văn gửi lên không hợp lệ"));
 

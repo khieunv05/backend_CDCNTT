@@ -53,6 +53,7 @@ import static org.mockito.Mockito.when;
 class PhraseFlowIT {
 
     private static final String RUN_ID = Long.toHexString(System.nanoTime());
+    private static final String PARAGRAPH_TITLE = "Luyện viết IELTS";
     private static final String PARAGRAPH =
             "I has went to the store yesterday and buyed some bread, which I eated it fast.";
 
@@ -89,9 +90,10 @@ class PhraseFlowIT {
                         new AiClient.GradingError("has went", "went", "past participle"),
                         new AiClient.GradingError("buyed", "bought", "irregular verb"))));
 
-        PhraseDto created = phraseService.create(aliceId, new PhraseForm(PARAGRAPH));
+        PhraseDto created = phraseService.create(aliceId, new PhraseForm(PARAGRAPH_TITLE, PARAGRAPH));
 
         assertThat(created.id()).isNotNull();
+        assertThat(created.title()).isEqualTo(PARAGRAPH_TITLE);
         assertThat(created.text()).isEqualTo(PARAGRAPH);
         assertThat(created.score()).isEqualTo(8);
         assertThat(created.correctedText()).isEqualTo("I went to the store...");
@@ -101,6 +103,8 @@ class PhraseFlowIT {
         assertThat(created.errors().get(1).incorrect()).isEqualTo("buyed");
         assertThat(created.errors().get(1).explanation()).isEqualTo("irregular verb");
         assertThat(phraseRows(created.id())).isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT title FROM phrases WHERE id = ?", String.class,
+                created.id())).isEqualTo(PARAGRAPH_TITLE);
         assertThat(phraseRowsFor(aliceId)).isEqualTo(1);
 
         List<PhraseDto> listed = phraseService.list(aliceId);
@@ -116,7 +120,7 @@ class PhraseFlowIT {
         when(gradingService.grade("hello world"))
                 .thenThrow(new InvalidPhraseException());
 
-        assertThatThrownBy(() -> phraseService.create(aliceId, new PhraseForm("hello world")))
+        assertThatThrownBy(() -> phraseService.create(aliceId, new PhraseForm(PARAGRAPH_TITLE, "hello world")))
                 .isInstanceOf(InvalidPhraseException.class)
                 .hasMessage("Đoạn văn gửi lên không hợp lệ");
 
@@ -131,7 +135,7 @@ class PhraseFlowIT {
         when(gradingService.grade(anyString()))
                 .thenReturn(new GradingResult(7, "fixed", List.of(
                         new AiClient.GradingError("has went", "went", "pp"))));
-        PhraseDto created = phraseService.create(aliceId, new PhraseForm(PARAGRAPH));
+        PhraseDto created = phraseService.create(aliceId, new PhraseForm(PARAGRAPH_TITLE, PARAGRAPH));
 
         assertThatCode(() -> phraseService.delete(bobId, created.id()))
                 .isInstanceOf(OwnershipDeniedException.class);

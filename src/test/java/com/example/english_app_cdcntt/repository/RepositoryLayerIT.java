@@ -248,8 +248,8 @@ class RepositoryLayerIT {
 
     @Test
     void phraseCountByUserIsScopedToOwner() {
-        phraseRepository.saveAndFlush(Phrase.create(alice, "i goes home", "I go home", 4));
-        phraseRepository.saveAndFlush(Phrase.create(alice, "she go home", "She goes home", 5));
+        phraseRepository.saveAndFlush(Phrase.create(alice, "Tiêu đề", "i goes home", "I go home", 4));
+        phraseRepository.saveAndFlush(Phrase.create(alice, "Tiêu đề", "she go home", "She goes home", 5));
 
         assertThat(phraseRepository.countByUser_Id(alice.getId())).isEqualTo(2);
         assertThat(phraseRepository.countByUser_Id(bob.getId())).isZero();
@@ -257,7 +257,7 @@ class RepositoryLayerIT {
 
     @Test
     void phraseCascadesGrammarErrorsAndBulkDeleteWorks() {
-        Phrase phrase = Phrase.create(alice, "i goes", "I go", 3);
+        Phrase phrase = Phrase.create(alice, "Tiêu đề", "i goes", "I go", 3);
         phrase.addError(GrammarError.create("i", "I", "capitalize the pronoun"));
         phrase.addError(GrammarError.create("goes", "go", "subject-verb agreement"));
         Phrase saved = phraseRepository.saveAndFlush(phrase);
@@ -278,7 +278,7 @@ class RepositoryLayerIT {
     @Test
     void auditTimestampsArePopulatedOnInsert() {
         Word word = wordRepository.saveAndFlush(Word.create(alice, "audit-w-" + RUN_ID, NOW));
-        Phrase phrase = phraseRepository.saveAndFlush(Phrase.create(alice, "audit", "Audit", 5));
+        Phrase phrase = phraseRepository.saveAndFlush(Phrase.create(alice, "Tiêu đề", "audit", "Audit", 5));
         RefreshToken token =
                 refreshTokenRepository.saveAndFlush(RefreshToken.create(alice, "audit-" + RUN_ID, NOW.plusSeconds(60)));
         WordCache cache = wordCacheRepository.saveAndFlush(WordCache.create("audit-c-" + RUN_ID, Level.A1));

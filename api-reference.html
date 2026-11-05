@@ -411,6 +411,7 @@
           <pre>[
   {
     <span class="key">"id"</span>: <span class="n">5</span>,
+    <span class="key">"title"</span>: <span class="s">"Luyện viết IELTS"</span>,
     <span class="key">"text"</span>: <span class="s">"I has went to school yesterday."</span>,
     <span class="key">"correctedText"</span>: <span class="s">"I went to school yesterday."</span>,
     <span class="key">"score"</span>: <span class="n">4</span>,
@@ -431,8 +432,9 @@
     <div class="ep-body">
       <div class="blk"><h4>Request body</h4>
         <table><tr><th>Trường</th><th>Kiểu</th><th>Ràng buộc</th></tr>
-        <tr><td><code>text</code></td><td><span class="k">string</span></td><td>10–5000 ký tự</td></tr></table>
-        <p class="note" style="margin-top:10px">AI chấm điểm rồi lưu <code>text + correctedText + score + errors</code> <b>nguyên tố</b> (1 transaction; lỗi AI → không lưu gì). <code>score</code>: số nguyên 0–10.</p></div>
+        <tr><td><code>title</code></td><td><span class="k">string</span></td><td>bắt buộc, 1–255 ký tự</td></tr>
+        <tr><td><code>text</code></td><td><span class="k">string</span></td><td>bắt buộc, 10–5000 ký tự</td></tr></table>
+        <p class="note" style="margin-top:10px">AI chỉ chấm <code>text</code>; <code>title</code> được lưu nguyên văn để hiển thị trong sổ. Kết quả <code>text + correctedText + score + errors</code> được lưu <b>nguyên tố</b> (1 transaction; lỗi AI → không lưu gì). <code>score</code>: số nguyên 0–10.</p></div>
       <div class="blk ret"><h4>Response</h4>
         <div class="ret-row"><span class="pill s-ok">201</span><div class="shape">
           <div class="t"><b>SuccessResponse&lt;PhraseDto&gt;</b></div>
@@ -513,7 +515,8 @@
       <table>
         <tr><th>Trường</th><th>Kiểu</th></tr>
         <tr><td><code>id</code></td><td><span class="k">long</span></td></tr>
-        <tr><td><code>text</code></td><td><span class="k">string</span> — 10…5000 ký tự</td></tr>
+        <tr><td><code>title</code></td><td><span class="k">string</span> — do người dùng nhập, 1…255 ký tự (không gửi cho AI)</td></tr>
+        <tr><td><code>text</code></td><td><span class="k">string</span> — 10…5000 ký tự, phần AI chấm</td></tr>
         <tr><td><code>correctedText</code></td><td><span class="k">string</span> — bản AI sửa</td></tr>
         <tr><td><code>score</code></td><td><span class="k">int</span> — 0…10 (nguyên, không kẹp biên)</td></tr>
         <tr><td><code>createdAt</code></td><td><span class="k">Instant</span></td></tr>

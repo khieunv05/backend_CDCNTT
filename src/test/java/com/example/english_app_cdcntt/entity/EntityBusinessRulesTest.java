@@ -225,36 +225,46 @@ class EntityBusinessRulesTest {
 
         @Test
         void createAcceptsBoundaryScores() {
-            assertThat(Phrase.create(user(), "i goes", "I go", 0).getScore()).isZero();
-            assertThat(Phrase.create(user(), "i goes", "I go", 10).getScore()).isEqualTo(10);
+            assertThat(Phrase.create(user(), "Tiêu đề", "i goes", "I go", 0).getScore()).isZero();
+            assertThat(Phrase.create(user(), "Tiêu đề", "i goes", "I go", 10).getScore()).isEqualTo(10);
+        }
+
+        @Test
+        void createKeepsTitleVerbatim() {
+            Phrase phrase = Phrase.create(user(), "Luyện viết IELTS", "i goes", "I go", 5);
+            assertThat(phrase.getTitle()).isEqualTo("Luyện viết IELTS");
+            assertThat(phrase.getText()).isEqualTo("i goes");
         }
 
         @Test
         void createRejectsScoreOutsideZeroToTen() {
-            assertThatThrownBy(() -> Phrase.create(user(), "i goes", "I go", -1))
+            assertThatThrownBy(() -> Phrase.create(user(), "Tiêu đề", "i goes", "I go", -1))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessage("score must be between 0 and 10");
-            assertThatThrownBy(() -> Phrase.create(user(), "i goes", "I go", 11))
+            assertThatThrownBy(() -> Phrase.create(user(), "Tiêu đề", "i goes", "I go", 11))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessage("score must be between 0 and 10");
         }
 
         @Test
         void createRejectsNullFields() {
-            assertThatThrownBy(() -> Phrase.create(null, "t", "c", 5))
+            assertThatThrownBy(() -> Phrase.create(null, "Tiêu đề", "t", "c", 5))
                     .isInstanceOf(NullPointerException.class)
                     .hasMessage("user");
-            assertThatThrownBy(() -> Phrase.create(user(), null, "c", 5))
+            assertThatThrownBy(() -> Phrase.create(user(), null, "t", "c", 5))
+                    .isInstanceOf(NullPointerException.class)
+                    .hasMessage("title");
+            assertThatThrownBy(() -> Phrase.create(user(), "Tiêu đề", null, "c", 5))
                     .isInstanceOf(NullPointerException.class)
                     .hasMessage("text");
-            assertThatThrownBy(() -> Phrase.create(user(), "t", null, 5))
+            assertThatThrownBy(() -> Phrase.create(user(), "Tiêu đề", "t", null, 5))
                     .isInstanceOf(NullPointerException.class)
                     .hasMessage("correctedText");
         }
 
         @Test
         void updateResultAppliesSameValidation() {
-            Phrase phrase = Phrase.create(user(), "i goes", "I go", 5);
+            Phrase phrase = Phrase.create(user(), "Tiêu đề", "i goes", "I go", 5);
             phrase.updateResult("I go home.", 7);
             assertThat(phrase.getCorrectedText()).isEqualTo("I go home.");
             assertThat(phrase.getScore()).isEqualTo(7);
@@ -267,7 +277,7 @@ class EntityBusinessRulesTest {
 
         @Test
         void addRemoveErrorKeepsBothSidesInSync() {
-            Phrase phrase = Phrase.create(user(), "i goes", "I go", 5);
+            Phrase phrase = Phrase.create(user(), "Tiêu đề", "i goes", "I go", 5);
             GrammarError error = GrammarError.create("goes", "go", "subject-verb agreement");
             phrase.addError(error);
             assertThat(phrase.getGrammarErrors()).containsExactly(error);
@@ -280,7 +290,7 @@ class EntityBusinessRulesTest {
 
         @Test
         void errorViewIsUnmodifiable() {
-            Phrase phrase = Phrase.create(user(), "i goes", "I go", 5);
+            Phrase phrase = Phrase.create(user(), "Tiêu đề", "i goes", "I go", 5);
             assertThatThrownBy(() -> phrase.getGrammarErrors().add(GrammarError.create("i", "I", "cap")))
                     .isInstanceOf(UnsupportedOperationException.class);
         }

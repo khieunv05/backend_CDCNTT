@@ -265,13 +265,14 @@ class ApiEndToEndIT {
         String body = rest.post().uri("/api/phrases")
                 .header(HttpHeaders.AUTHORIZATION, bearer())
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(Map.of("text", "I has went to school yesterday."))
+                .body(Map.of("title", "Luyện viết IELTS", "text", "I has went to school yesterday."))
                 .exchange()
                 .expectStatus().isCreated()
                 .expectBody(String.class).returnResult().getResponseBody();
         JsonNode json = JSON.readTree(body);
         phraseId = json.path("data").path("id").asLong();
         assertThat(phraseId).isPositive();
+        assertThat(json.path("data").path("title").asText()).isEqualTo("Luyện viết IELTS");
         assertThat(json.path("data").path("correctedText").asText()).contains("I went");
         assertThat(json.path("data").path("score").asInt()).isEqualTo(4);
     }
@@ -287,6 +288,7 @@ class ApiEndToEndIT {
                 .expectBody()
                 .jsonPath("$.length()").isEqualTo(1)
                 .jsonPath("$[0].id").isEqualTo((int) phraseId)
+                .jsonPath("$[0].title").isEqualTo("Luyện viết IELTS")
                 .jsonPath("$[0].errors.length()").isEqualTo(1)
                 .jsonPath("$[0].errors[0].incorrect").isEqualTo("I has went")
                 .jsonPath("$[0].errors[0].correction").isEqualTo("I went")

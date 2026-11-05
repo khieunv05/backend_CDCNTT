@@ -35,7 +35,9 @@ public class PhraseServiceImpl implements PhraseService {
 
     @Override
     public PhraseDto create(Long userId, PhraseForm form) {
-        return phraseTxService.save(userId, form.text(), gradingService.grade(form.text()));
+        // Only the body is graded; the title is stored verbatim for the notebook list.
+        return phraseTxService.save(userId, form.title(), form.text(),
+                gradingService.grade(form.text()));
     }
 
     @Override

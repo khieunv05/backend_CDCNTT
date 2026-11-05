@@ -18,8 +18,9 @@ public class PhraseMapper {
                         Comparator.nullsLast(Comparator.naturalOrder())))
                 .map(this::toErrorDto)
                 .toList();
-        return new PhraseDto(phrase.getId(), phrase.getText(), phrase.getCorrectedText(),
-                phrase.getScore(), phrase.getCreatedAt(), List.copyOf(errors));
+        return new PhraseDto(phrase.getId(), phrase.getTitle(), phrase.getText(),
+                phrase.getCorrectedText(), phrase.getScore(), phrase.getCreatedAt(),
+                List.copyOf(errors));
     }
 
     private GrammarErrorDto toErrorDto(GrammarError error) {

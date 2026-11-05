@@ -50,6 +50,13 @@ public class Phrase {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
+    /**
+     * User-chosen label ("Luyện viết IELTS", "Thư xin việc"...): stored verbatim so the notebook
+     * can be scanned without opening the full paragraph. NEVER sent to the AI grader.
+     */
+    @Column(name = "title", nullable = false, length = 255)
+    private String title;
+
     /** TEXT column, not a CLOB: the migration declares {@code TEXT}, so validation must match. */
     @Column(name = "text", nullable = false, columnDefinition = "TEXT")
     private String text;
@@ -72,18 +79,19 @@ public class Phrase {
     @OneToMany(mappedBy = "phrase", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<GrammarError> grammarErrors = new ArrayList<>();
 
-    protected Phrase(User user, String text, String correctedText, int score) {
+    protected Phrase(User user, String title, String text, String correctedText, int score) {
         if (score < 0 || score > 10) {
             throw new IllegalArgumentException("score must be between 0 and 10");
         }
         this.user = Objects.requireNonNull(user, "user");
+        this.title = Objects.requireNonNull(title, "title");
         this.text = Objects.requireNonNull(text, "text");
         this.correctedText = Objects.requireNonNull(correctedText, "correctedText");
         this.score = score;
     }
 
-    public static Phrase create(User user, String text, String correctedText, int score) {
-        return new Phrase(user, text, correctedText, score);
+    public static Phrase create(User user, String title, String text, String correctedText, int score) {
+        return new Phrase(user, title, text, correctedText, score);
     }
 
     public void addError(GrammarError error) {

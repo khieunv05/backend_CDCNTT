@@ -44,3 +44,7 @@ graphflow-out/
 .graphflow-cache/
 .dsh-verify.log
 plan.md
+
+### Postman ###
+# Collection xuất cho tester: chỉ chia sẻ qua file, không commit vào repo.
+LEnglish.postman_collection.json
