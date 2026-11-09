@@ -37,7 +37,7 @@ public class PhraseController {
         this.phraseService = phraseService;
     }
 
-    /** §4.1 row 12 — the principal's graded paragraphs, ordered by {@code id} ascending. */
+    /** §4.1 row 12 — the principal's graded paragraphs, newest first (createdAt DESC). */
     @GetMapping
     List<PhraseDto> list(@AuthenticationPrincipal UserPrincipal principal) {
         return phraseService.list(principal.id());

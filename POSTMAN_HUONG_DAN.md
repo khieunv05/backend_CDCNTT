@@ -12,7 +12,7 @@ File cần gửi cho tester: **`LEnglish.postman_collection.json`** (chỉ 1 fil
 - **Chạy toàn bộ:** chuột phải collection → **Run collection** → **Run LEnglish — API Backend**. Không cần nhập gì thêm, biến mặc định đã đủ.
 - **Chạy từng request:** mở folder, chọn request → **Send**. Nên chạy theo đúng thứ tự từ trên xuống (các request sau dùng `wordId`, `phraseId`... do request trước lưu lại).
 
-Kết quả mong đợi: **38/38 request pass, 89 assert pass** (Newman đếm thêm các request do script tự gửi khi refresh/login/tạo user B, nên chỉ số "requests" hiển thị 46 — không phải lỗi).
+Kết quả mong đợi: **38/38 request pass, 90 assert pass** (Newman đếm thêm các request do script tự gửi khi refresh/login/tạo user B, nên chỉ số "requests" hiển thị 46 — không phải lỗi).
 
 ## 3. Biến trong collection (Collection → Variables)
 
@@ -53,6 +53,7 @@ Cuối mỗi request có bước **dọn dẹp**: user A tự xoá tài nguyên 
 - **Ca lỗi 403 ở folder 04 là đúng:** xoá lại từ/đoạn văn vừa xoá phải trả 403 (backend không tiết lộ tài nguyên có tồn tại hay không). Folder 05 kiểm tra 403 ở góc độ khác: tài nguyên còn sống nhưng do user khác sở hữu.
 - **Ca 400 của đoạn văn (folder 04):** `POST /api/phrases` thiếu/để trống `title`, `title` dài quá 255 ký tự, `text` quá ngắn hoặc toàn khoảng trắng → `400` `"Đoạn văn gửi lên không hợp lệ"`. Riêng endpoint này backend trả **một câu lỗi cố định, chỉ có `message`** (không có `details[]` như `/api/words`), nên đừng thắc mắc khi không thấy chi tiết field.
 - **`title` của đoạn văn:** bắt buộc, 1–255 ký tự, là nhãn người dùng tự đặt (vd `"Luyện viết IELTS"`). Title **không** được gửi cho AI — chỉ `text` được chấm; response trả lại `title` nguyên văn.
+- **Thứ tự danh sách đoạn văn:** `GET /api/phrases` trả **mới nhất trước** (`createdAt` giảm dần; trùng thời điểm thì `id` giảm dần), nên request "Danh sách chứa đoạn văn vừa tạo" còn assert đoạn văn vừa tạo nằm ở `data[0]`.
 - **Ca 409 trùng từ (folder 04):** request gửi `POST /api/words` lần hai với đúng từ đã có → phải trả `409` `"Từ này đã có trong sổ của bạn"`. Pre-request tự tạo từ trước rồi test tự xoá, nên chạy lại nhiều lần vẫn đúng.
 - Mỗi lần **Run collection** sẽ tạo 1 user mới (`tester_xxxxxx`) và tự dọn dữ liệu đã tạo, nên chạy lại bao nhiêu lần cũng được.
 - Nếu muốn giữ dữ liệu để xem trong DB: chạy từng request thay vì Run collection, và bỏ qua 2 request `Xoá ...` ở cuối folder 02 và 03.

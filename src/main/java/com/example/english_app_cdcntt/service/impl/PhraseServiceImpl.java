@@ -28,7 +28,7 @@ public class PhraseServiceImpl implements PhraseService {
     @Override
     @Transactional(readOnly = true)
     public List<PhraseDto> list(Long userId) {
-        return phraseRepository.findByUser_IdOrderByIdAsc(userId).stream()
+        return phraseRepository.findByUser_IdOrderByCreatedAtDescIdDesc(userId).stream()
                 .map(phraseMapper::toDto)
                 .toList();
     }

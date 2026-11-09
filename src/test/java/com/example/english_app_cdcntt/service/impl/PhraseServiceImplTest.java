@@ -125,7 +125,7 @@ class PhraseServiceImplTest {
     @Test
     @DisplayName("list: map từng phrase (trong tx đọc lazy errors)")
     void listMapsEachPhrase() {
-        when(phraseRepository.findByUser_IdOrderByIdAsc(USER_ID))
+        when(phraseRepository.findByUser_IdOrderByCreatedAtDescIdDesc(USER_ID))
                 .thenReturn(List.of(phrase(), phrase()));
 
 

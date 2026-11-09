@@ -115,6 +115,19 @@ class PhraseFlowIT {
     }
 
     @Test
+    @DisplayName("list returns the newest phrase first (createdAt DESC, id DESC tiebreak)")
+    void list_newestFirst() {
+        when(gradingService.grade(anyString()))
+                .thenReturn(new GradingResult(8, "corrected", List.of()));
+
+        PhraseDto older = phraseService.create(aliceId, new PhraseForm(PARAGRAPH_TITLE, PARAGRAPH));
+        PhraseDto newer = phraseService.create(aliceId, new PhraseForm(PARAGRAPH_TITLE, PARAGRAPH));
+
+        assertThat(phraseService.list(aliceId)).extracting(PhraseDto::id)
+                .containsExactly(newer.id(), older.id());
+    }
+
+    @Test
     @DisplayName("invalid paragraph (provider validPhrase=false → adapter throws) stores nothing")
     void create_notAParagraph_storesNothing() {
         when(gradingService.grade("hello world"))

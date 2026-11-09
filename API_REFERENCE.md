@@ -185,7 +185,7 @@ Body:
 ## 4. Đoạn văn — `/api/phrases`
 
 ### 4.1. Danh sách — `GET /api/phrases`
-**200** `List<PhraseDto>`, sắp theo `id` tăng dần.
+**200** `List<PhraseDto>`, sắp theo `createdAt` giảm dần (mới nhất trước; trùng thời điểm thì `id` giảm dần).
 
 `PhraseDto`:
 ```json
