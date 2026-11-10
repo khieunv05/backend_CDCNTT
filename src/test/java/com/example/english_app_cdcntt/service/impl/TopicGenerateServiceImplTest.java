@@ -87,7 +87,7 @@ class TopicGenerateServiceImplTest {
     private Word ownedWord(String english) {
         // Word's constructor requires a non-null user and nextReview (Objects.requireNonNull) —
         // the exclude list only reads Word::getEnglish, so throwaway values are fine here
-        return Word.create(User.create("alice", "hash"), english, Instant.parse("2026-01-15T08:00:00Z"));
+        return Word.create(User.create("alice", "alice", "hash"), english, Instant.parse("2026-01-15T08:00:00Z"));
     }
 
     private WordCache cachedWord(String english) {

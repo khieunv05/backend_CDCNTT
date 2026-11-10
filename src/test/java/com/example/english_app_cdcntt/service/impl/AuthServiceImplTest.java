@@ -73,19 +73,19 @@ class AuthServiceImplTest {
     @Test
     @DisplayName("register chuyển tiếp chính xác username và mật khẩu thô tới createUser")
     void register_delegatesToCreateUserWithExactArguments() {
-        authService.register("alice", "s3cret!");
+        authService.register("alice", "Alice", "s3cret!");
 
-        verify(registrationTxService).createUser("alice", "s3cret!");
+        verify(registrationTxService).createUser("alice", "Alice", "s3cret!");
         verifyNoInteractions(userRepository, passwordEncoder, refreshTokenTxService);
     }
 
     @Test
     @DisplayName("register không ném ngoại lệ khi createUser thành công")
     void register_succeedsWhenCreateUserDoesNothing() {
-        assertThatCode(() -> authService.register("alice", "s3cret!"))
+        assertThatCode(() -> authService.register("alice", "Alice", "s3cret!"))
                 .doesNotThrowAnyException();
 
-        verify(registrationTxService).createUser("alice", "s3cret!");
+        verify(registrationTxService).createUser("alice", "Alice", "s3cret!");
     }
 
     @Test
@@ -94,9 +94,9 @@ class AuthServiceImplTest {
         SQLIntegrityConstraintViolationException sqlException = new SQLIntegrityConstraintViolationException(
                 "Duplicate entry 'alice' for key 'uk_users_username'");
         DataIntegrityViolationException original = new DataIntegrityViolationException("insert failed", sqlException);
-        doThrow(original).when(registrationTxService).createUser(anyString(), anyString());
+        doThrow(original).when(registrationTxService).createUser(anyString(), anyString(), anyString());
 
-        assertThatThrownBy(() -> authService.register("alice", "s3cret!"))
+        assertThatThrownBy(() -> authService.register("alice", "Alice", "s3cret!"))
                 .isInstanceOf(DuplicateUsernameException.class)
                 .hasMessage(DUPLICATE_USERNAME_MESSAGE)
                 .satisfies(thrown -> assertThat(thrown).isNotSameAs(original));
@@ -109,9 +109,9 @@ class AuthServiceImplTest {
                 "Duplicate entry 'alice' for key 'uk_users_username'");
         RuntimeException middle = new RuntimeException("wrapped", sqlException);
         DataIntegrityViolationException original = new DataIntegrityViolationException("insert failed", middle);
-        doThrow(original).when(registrationTxService).createUser(anyString(), anyString());
+        doThrow(original).when(registrationTxService).createUser(anyString(), anyString(), anyString());
 
-        assertThatThrownBy(() -> authService.register("alice", "s3cret!"))
+        assertThatThrownBy(() -> authService.register("alice", "Alice", "s3cret!"))
                 .isInstanceOf(DuplicateUsernameException.class)
                 .hasMessage(DUPLICATE_USERNAME_MESSAGE);
     }
@@ -122,9 +122,9 @@ class AuthServiceImplTest {
         SQLIntegrityConstraintViolationException sqlException = new SQLIntegrityConstraintViolationException(
                 "Duplicate entry 'x' for key 'uk_users_email'");
         DataIntegrityViolationException original = new DataIntegrityViolationException("insert failed", sqlException);
-        doThrow(original).when(registrationTxService).createUser(anyString(), anyString());
+        doThrow(original).when(registrationTxService).createUser(anyString(), anyString(), anyString());
 
-        assertThatThrownBy(() -> authService.register("alice", "s3cret!"))
+        assertThatThrownBy(() -> authService.register("alice", "Alice", "s3cret!"))
                 .isSameAs(original)
                 .isNotInstanceOf(DuplicateUsernameException.class);
     }
@@ -134,9 +134,9 @@ class AuthServiceImplTest {
     void register_rethrowsOriginalWhenNoSqlConstraintViolationInChain() {
         DataIntegrityViolationException original = new DataIntegrityViolationException("insert failed",
                 new RuntimeException("boom"));
-        doThrow(original).when(registrationTxService).createUser(anyString(), anyString());
+        doThrow(original).when(registrationTxService).createUser(anyString(), anyString(), anyString());
 
-        assertThatThrownBy(() -> authService.register("alice", "s3cret!"))
+        assertThatThrownBy(() -> authService.register("alice", "Alice", "s3cret!"))
                 .isSameAs(original)
                 .isNotInstanceOf(DuplicateUsernameException.class);
     }
@@ -146,7 +146,7 @@ class AuthServiceImplTest {
     @Test
     @DisplayName("login trả về đúng AuthResponse từ issueSession khi mật khẩu khớp")
     void login_returnsSessionIssuedByRefreshTokenService() {
-        User user = User.create("alice", "hash");
+        User user = User.create("alice", "alice", "hash");
         AuthResponse expected = new AuthResponse("access-token", "refresh-token", 3600L);
         when(userRepository.findByUsername("alice")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("s3cret!", "hash")).thenReturn(true);
@@ -176,7 +176,7 @@ class AuthServiceImplTest {
     @Test
     @DisplayName("login ném InvalidCredentialsException khi mật khẩu không khớp")
     void login_throwsInvalidCredentialsWhenPasswordDoesNotMatch() {
-        User user = User.create("alice", "hash");
+        User user = User.create("alice", "alice", "hash");
         when(userRepository.findByUsername("alice")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("wrong", "hash")).thenReturn(false);
 

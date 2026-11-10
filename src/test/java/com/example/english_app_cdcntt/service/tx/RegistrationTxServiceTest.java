@@ -31,6 +31,7 @@ import static org.mockito.Mockito.when;
 class RegistrationTxServiceTest {
 
     private static final String USERNAME = "alice";
+    private static final String DISPLAY_NAME = "Alice Nguyen";
     private static final String RAW_PASSWORD = "raw-secret-password";
     private static final String ENCODED_PASSWORD = "$2a$12$encoded-password-hash";
 
@@ -55,7 +56,7 @@ class RegistrationTxServiceTest {
         when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         // When
-        service.createUser(USERNAME, RAW_PASSWORD);
+        service.createUser(USERNAME, DISPLAY_NAME, RAW_PASSWORD);
 
         // Then
         verify(passwordEncoder).encode(RAW_PASSWORD);
@@ -65,6 +66,7 @@ class RegistrationTxServiceTest {
 
         User saved = captor.getValue();
         assertThat(saved.getUsername()).isEqualTo(USERNAME);
+        assertThat(saved.getName()).isEqualTo(DISPLAY_NAME);
         assertThat(saved.getPassword()).isEqualTo(ENCODED_PASSWORD);
     }
 
@@ -76,7 +78,7 @@ class RegistrationTxServiceTest {
         when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         // When
-        service.createUser(USERNAME, RAW_PASSWORD);
+        service.createUser(USERNAME, DISPLAY_NAME, RAW_PASSWORD);
 
         // Then
         ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
@@ -97,7 +99,7 @@ class RegistrationTxServiceTest {
         when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         // When / Then
-        assertThatCode(() -> service.createUser(USERNAME, RAW_PASSWORD))
+        assertThatCode(() -> service.createUser(USERNAME, DISPLAY_NAME, RAW_PASSWORD))
                 .doesNotThrowAnyException();
 
         verify(userRepository).save(any(User.class));

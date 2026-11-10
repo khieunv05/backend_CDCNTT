@@ -48,9 +48,9 @@ public class AuthServiceImpl implements AuthService {
 
     /** §5.2:234 — pre-check inside the short transaction, UNIQUE constraint as last line of defense. */
     @Override
-    public void register(String username, String rawPassword) {
+    public void register(String username, String name, String rawPassword) {
         try {
-            registrationTxService.createUser(username, rawPassword);
+            registrationTxService.createUser(username, name, rawPassword);
         } catch (DataIntegrityViolationException e) {
             // The transaction has already rolled back at the proxy boundary; map only the
             // username-unique violation, rethrow anything else (§5.2:234).

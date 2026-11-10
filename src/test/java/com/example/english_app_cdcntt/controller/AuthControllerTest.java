@@ -56,11 +56,11 @@ class AuthControllerTest {
     void registerReturnsCreated() throws Exception {
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"username\":\"alice\",\"password\":\"s3cret!x\"}"))
+                        .content("{\"name\":\"Alice\",\"username\":\"alice\",\"password\":\"s3cret!x\"}"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.message").value(REGISTER_SUCCESS));
 
-        verify(authService).register("alice", "s3cret!x");
+        verify(authService).register("alice", "Alice", "s3cret!x");
     }
 
     @Test
@@ -108,11 +108,11 @@ class AuthControllerTest {
     @DisplayName("register maps DuplicateUsernameException to 409")
     void registerDuplicateIsConflict() throws Exception {
         doThrow(new DuplicateUsernameException())
-                .when(authService).register(anyString(), anyString());
+                .when(authService).register(anyString(), anyString(), anyString());
 
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"username\":\"alice\",\"password\":\"s3cret!x\"}"))
+                        .content("{\"name\":\"Alice\",\"username\":\"alice\",\"password\":\"s3cret!x\"}"))
                 .andExpect(status().isConflict());
     }
 
@@ -157,7 +157,7 @@ class AuthControllerTest {
     void blankUsernameOnRegisterIsBadRequest() throws Exception {
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"username\":\"  \",\"password\":\"s3cret!x\"}"))
+                        .content("{\"name\":\"Alice\",\"username\":\"  \",\"password\":\"s3cret!x\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.details").isArray());
 

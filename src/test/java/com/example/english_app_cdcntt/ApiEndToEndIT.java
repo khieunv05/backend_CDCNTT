@@ -94,7 +94,7 @@ class ApiEndToEndIT {
     void register_createsAccount() {
         rest.post().uri("/api/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(Map.of("username", username, "password", password))
+                .body(Map.of("name", "Người kiểm thử", "username", username, "password", password))
                 .exchange()
                 .expectStatus().isCreated()
                 .expectBody()
@@ -397,6 +397,42 @@ class ApiEndToEndIT {
 
     @Test
     @Order(16)
+    @DisplayName("GET /api/users/me returns the name; PUT renames and trims it")
+    void profile_returnsNameAndAllowsRename() {
+        rest.get().uri("/api/users/me")
+                .header(HttpHeaders.AUTHORIZATION, bearer())
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.username").isEqualTo(username)
+                .jsonPath("$.name").isEqualTo("Người kiểm thử");
+
+        rest.put().uri("/api/users/me")
+                .header(HttpHeaders.AUTHORIZATION, bearer())
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("name", "  Tên Mới  "))
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.message").isEqualTo("Cập nhật tên thành công")
+                .jsonPath("$.data.name").isEqualTo("Tên Mới");
+
+        rest.put().uri("/api/users/me")
+                .header(HttpHeaders.AUTHORIZATION, bearer())
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("name", "   "))
+                .exchange()
+                .expectStatus().isBadRequest()
+                .expectBody()
+                .jsonPath("$.details[0].field").isEqualTo("name");
+
+        String stored = jdbc.queryForObject(
+                "SELECT name FROM users WHERE username = ?", String.class, username);
+        assertThat(stored).isEqualTo("Tên Mới");
+    }
+
+    @Test
+    @Order(17)
     @DisplayName("DB end state: both words reviewed once, phrase deleted")
     void cleanup_removedAllRows() {
         Long words = jdbc.queryForObject(

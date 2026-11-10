@@ -73,7 +73,7 @@ class PhraseServiceImplTest {
     }
 
     private static User user(long id) {
-        User user = User.create("alice", "hash");
+        User user = User.create("alice", "alice", "hash");
         ReflectionTestUtils.setField(user, "id", id);
         return user;
     }

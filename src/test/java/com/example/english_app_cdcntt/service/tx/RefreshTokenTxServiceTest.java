@@ -318,7 +318,7 @@ class RefreshTokenTxServiceTest {
 
     /** A persisted-looking user with a non-null id, as required for the payload identity checks. */
     private User existingUser() {
-        User user = User.create(USERNAME, "$2a$12$encoded-password-hash");
+        User user = User.create(USERNAME, USERNAME, "$2a$12$encoded-password-hash");
         ReflectionTestUtils.setField(user, "id", USER_ID);
         return user;
     }

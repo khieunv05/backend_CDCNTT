@@ -25,10 +25,10 @@ public class RegistrationTxService {
     }
 
     @Transactional
-    public void createUser(String username, String rawPassword) {
+    public void createUser(String username, String name, String rawPassword) {
         if (userRepository.existsByUsername(username)) {
             throw new DuplicateUsernameException();
         }
-        userRepository.save(User.create(username, passwordEncoder.encode(rawPassword)));
+        userRepository.save(User.create(username, name.trim(), passwordEncoder.encode(rawPassword)));
     }
 }

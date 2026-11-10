@@ -36,17 +36,26 @@ public class User {
     @Column(name = "username", nullable = false, length = 50)
     private String username;
 
+    @Column(name = "name", nullable = false, length = 100)
+    private String name;
+
     @Column(name = "password", nullable = false, length = 60)
     private String password;
 
-    protected User(String username, String password) {
+    protected User(String username, String name, String password) {
         this.username = Objects.requireNonNull(username, "username");
+        this.name = Objects.requireNonNull(name, "name");
         this.password = Objects.requireNonNull(password, "password");
     }
 
     /** Static factory; {@code password} must already be a BCrypt hash. */
-    public static User create(String username, String password) {
-        return new User(username, password);
+    public static User create(String username, String name, String password) {
+        return new User(username, name, password);
+    }
+
+    /** Display name only — changing it never affects login or any token. */
+    public void changeName(String newName) {
+        this.name = Objects.requireNonNull(newName, "newName");
     }
 
     public void changePassword(String newPassword) {

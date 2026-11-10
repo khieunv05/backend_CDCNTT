@@ -63,7 +63,7 @@ class TopicTxServiceImplTest {
         Clock clock = Clock.fixed(FIXED_NOW, ZoneId.of("UTC"));
         topicTxService = new TopicTxServiceImpl(wordRepository, userRepository, clock);
         // Word's constructor requires a real user (Objects.requireNonNull)
-        when(userRepository.getReferenceById(1L)).thenReturn(User.create("alice", "hash"));
+        when(userRepository.getReferenceById(1L)).thenReturn(User.create("alice", "alice", "hash"));
         when(wordRepository.saveAndFlush(any(Word.class))).thenAnswer(invocation -> {
             Word word = invocation.getArgument(0);
             ReflectionTestUtils.setField(word, "id", idSeq.incrementAndGet());

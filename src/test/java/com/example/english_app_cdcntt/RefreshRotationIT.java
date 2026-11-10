@@ -90,7 +90,7 @@ class RefreshRotationIT {
     private void login() throws Exception {
         String body = rest.post().uri("/api/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(Map.of("username", username, "password", password))
+                .body(Map.of("name", "Người kiểm thử", "username", username, "password", password))
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody(String.class).returnResult().getResponseBody();

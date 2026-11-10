@@ -40,7 +40,7 @@ public class AuthController {
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
     MessageResponse register(@Valid @RequestBody RegisterForm form) {
-        authService.register(form.username(), form.password());
+        authService.register(form.username(), form.name(), form.password());
         return new MessageResponse(REGISTER_SUCCESS_MESSAGE);
     }
 

@@ -20,7 +20,7 @@ public interface AuthService {
      *
      * @throws DuplicateUsernameException when the username is already taken
      */
-    void register(String username, String rawPassword);
+    void register(String username, String name, String rawPassword);
 
     /**
      * §5.2:235 — verify the password, then open a session; returns only after the refresh row is committed.

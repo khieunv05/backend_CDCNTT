@@ -68,8 +68,8 @@ class PhraseFlowIT {
 
     @BeforeEach
     void createUsers() {
-        aliceId = userRepository.saveAndFlush(User.create("pflow-a-" + RUN_ID, "hash-a")).getId();
-        bobId = userRepository.saveAndFlush(User.create("pflow-b-" + RUN_ID, "hash-b")).getId();
+        aliceId = userRepository.saveAndFlush(User.create("pflow-a-" + RUN_ID, "pflow-a-" + RUN_ID, "hash-a")).getId();
+        bobId = userRepository.saveAndFlush(User.create("pflow-b-" + RUN_ID, "pflow-b-" + RUN_ID, "hash-b")).getId();
     }
 
     @AfterEach

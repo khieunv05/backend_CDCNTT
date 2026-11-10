@@ -109,17 +109,18 @@
 <div class="hero">
   <div class="hero-inner">
     <h1><span class="logo">📘</span> LEnglish — API Reference</h1>
-    <p>Tài liệu 17 endpoint của backend: kiểu dữ liệu trả về, định dạng request và mã trạng thái cho từng đường dẫn.
+    <p>Tài liệu 19 endpoint của backend: kiểu dữ liệu trả về, định dạng request và mã trạng thái cho từng đường dẫn.
        Mọi request/response đều là <b>JSON UTF-8</b>.</p>
     <div class="stats">
-      <div class="stat"><b>17</b> endpoint</div>
+      <div class="stat"><b>19</b> endpoint</div>
       <div class="stat"><b>JWT HS256</b> Bearer auth</div>
       <div class="stat"><b>Base URL</b> /api</div>
-      <div class="stat"><b>10</b> kiểu DTO</div>
+      <div class="stat"><b>11</b> kiểu DTO</div>
     </div>
     <nav class="toc">
       <a href="#quy-uoc">Quy ước chung</a>
       <a href="#auth">🔐 Xác thực</a>
+      <a href="#users">👤 Hồ sơ</a>
       <a href="#words">📖 Từ vựng</a>
       <a href="#phrases">✍️ Đoạn văn</a>
       <a href="#dto">Kiểu dữ liệu (DTO)</a>
@@ -160,6 +161,7 @@
       <div class="blk"><h4>Request body</h4>
         <table>
           <tr><th>Trường</th><th>Kiểu</th><th>Ràng buộc</th></tr>
+          <tr><td><code>name</code></td><td><span class="k">string</span></td><td>bắt buộc, 1–100 ký tự (được trùng)</td></tr>
           <tr><td><code>username</code></td><td><span class="k">string</span></td><td>3–50 ký tự, chỉ <code>[A-Za-z0-9_.]</code></td></tr>
           <tr><td><code>password</code></td><td><span class="k">string</span></td><td>≥ 8 ký tự, tối đa 72 byte UTF-8</td></tr>
         </table>
@@ -240,6 +242,44 @@
         <div class="ret-row"><span class="pill s-401">401</span><div class="shape"><div class="t"><b>ErrorResponse</b> — thiếu hoặc sai Bearer token</div></div></div>
       </div>
       <div class="note">Tài khoản lấy từ token, không lấy từ body. Access token đang dùng vẫn sống tới khi hết hạn (30 phút); các phiên khác mất refresh token nên không gia hạn được.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= USERS ================= -->
+<section id="users">
+  <h2 class="sec"><span class="dot"></span>👤 Hồ sơ người dùng — /api/users</h2>
+
+  <div class="ep" id="get-profile">
+    <div class="ep-head"><span class="pill get">GET</span><span class="path">/api/users/me</span>
+      <span class="pill auth-pill">Bearer</span><span class="name">Xem hồ sơ của chính mình</span></div>
+    <div class="ep-body">
+      <div class="blk ret"><h4>Response</h4>
+        <div class="ret-row"><span class="pill s-ok">200</span><div class="shape">
+          <div class="t"><b>UserProfileDto</b> — trả trần, không bọc <code>data</code></div>
+          <pre>{ <span class="key">"id"</span>: <span class="n">1</span>, <span class="key">"username"</span>: <span class="s">"alice"</span>, <span class="key">"name"</span>: <span class="s">"Nguyễn Văn A"</span> }</pre></div></div>
+        <div class="ret-row"><span class="pill s-401">401</span><div class="shape"><div class="t"><b>ErrorResponse</b> — thiếu hoặc sai Bearer token</div></div></div>
+      </div>
+      <div class="note">Tài khoản lấy từ token (<code>uid</code> + principal), không có id trên URL; không bao giờ trả password hash.</div>
+    </div>
+  </div>
+
+  <div class="ep" id="update-name">
+    <div class="ep-head"><span class="pill put">PUT</span><span class="path">/api/users/me</span>
+      <span class="pill auth-pill">Bearer</span><span class="name">Đổi tên hiển thị</span></div>
+    <div class="ep-body">
+      <div class="blk"><h4>Request body</h4>
+        <table><tr><th>Trường</th><th>Kiểu</th><th>Ràng buộc</th></tr>
+        <tr><td><code>name</code></td><td><span class="k">string</span></td><td>không rỗng, ≤ 100 ký tự; trim đầu/cuối trước khi lưu; được phép trùng</td></tr></table></div>
+      <div class="blk ret"><h4>Response</h4>
+        <div class="ret-row"><span class="pill s-ok">200</span><div class="shape">
+          <div class="t"><b>SuccessResponse&lt;UserProfileDto&gt;</b></div>
+          <pre>{ <span class="key">"message"</span>: <span class="s">"Cập nhật tên thành công"</span>,
+  <span class="key">"data"</span>: { <span class="key">"id"</span>: <span class="n">1</span>, <span class="key">"username"</span>: <span class="s">"alice"</span>, <span class="key">"name"</span>: <span class="s">"Tên mới"</span> } }</pre></div></div>
+        <div class="ret-row"><span class="pill s-400">400</span><div class="shape"><div class="t"><b>ValidationErrorResponse</b> — <code>details[].field = "name"</code></div></div></div>
+        <div class="ret-row"><span class="pill s-401">401</span><div class="shape"><div class="t"><b>ErrorResponse</b> — thiếu hoặc sai Bearer token</div></div></div>
+      </div>
+      <div class="note">Chỉ <code>name</code> thay đổi; <code>username</code>, mật khẩu và token giữ nguyên. Tên không phải khoá đăng nhập nên không cần duy nhất.</div>
     </div>
   </div>
 </section>
@@ -489,6 +529,12 @@
         <tr><td><code>expiresIn</code></td><td><span class="k">long</span> — giây còn hạn của access token</td></tr>
       </table></div>
 
+    <div class="dto"><h3>UserProfileDto</h3><div class="use">GET · PUT /api/users/me</div>
+      <table><tr><th>Trường</th><th>Kiểu</th></tr>
+      <tr><td><code>id</code></td><td><span class="k">long</span></td></tr>
+      <tr><td><code>username</code></td><td><span class="k">string</span> — khoá đăng nhập, không đổi</td></tr>
+      <tr><td><code>name</code></td><td><span class="k">string</span> — tên hiển thị, 1…100 ký tự, sửa được</td></tr></table></div>
+
     <div class="dto"><h3>MessageResponse</h3><div class="use">register · logout · delete</div>
       <table><tr><th>Trường</th><th>Kiểu</th></tr>
       <tr><td><code>message</code></td><td><span class="k">string</span></td></tr></table></div>
@@ -563,7 +609,7 @@
   </div>
 </section>
 
-<footer>LEnglish API Reference · khớp <b>API_REFERENCE.md</b> · 17 endpoint · 10 DTO</footer>
+<footer>LEnglish API Reference · khớp <b>API_REFERENCE.md</b> · 19 endpoint · 11 DTO</footer>
 </div>
 </body>
 </html>

@@ -47,8 +47,8 @@ class ReviewFlowIT {
 
     @BeforeEach
     void createUsers() {
-        aliceId = userRepository.saveAndFlush(User.create("rev-a-" + RUN_ID, "hash-alice")).getId();
-        bobId = userRepository.saveAndFlush(User.create("rev-b-" + RUN_ID, "hash-bob")).getId();
+        aliceId = userRepository.saveAndFlush(User.create("rev-a-" + RUN_ID, "rev-a-" + RUN_ID, "hash-alice")).getId();
+        bobId = userRepository.saveAndFlush(User.create("rev-b-" + RUN_ID, "rev-b-" + RUN_ID, "hash-bob")).getId();
     }
 
     @AfterEach

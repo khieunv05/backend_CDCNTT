@@ -60,8 +60,8 @@ class WordFlowIT {
 
     @BeforeEach
     void createUsers() {
-        aliceId = userRepository.saveAndFlush(User.create("flow-a-" + RUN_ID, "hash-alice")).getId();
-        bobId = userRepository.saveAndFlush(User.create("flow-b-" + RUN_ID, "hash-bob")).getId();
+        aliceId = userRepository.saveAndFlush(User.create("flow-a-" + RUN_ID, "flow-a-" + RUN_ID, "hash-alice")).getId();
+        bobId = userRepository.saveAndFlush(User.create("flow-b-" + RUN_ID, "flow-b-" + RUN_ID, "hash-bob")).getId();
     }
 
     @AfterEach

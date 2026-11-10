@@ -1,6 +1,6 @@
 # LEnglish — API Reference (§4.1)
 
-Tài liệu tham chiếu cho **17 endpoint** của backend LEnglish (§4.1 bảng `KE_HOACH_TRIEN_KHAI.md`).
+Tài liệu tham chiếu cho **19 endpoint** của backend LEnglish (§4.1 bảng `KE_HOACH_TRIEN_KHAI.md`).
 Tất cả request/response body đều là JSON UTF-8.
 
 ## 1. Quy ước chung
@@ -35,9 +35,9 @@ Mã lỗi chung: **401** chưa xác thực/sai thông tin đăng nhập, **403**
 
 Body:
 ```json
-{ "username": "alice", "password": "matkhau_it_nhat_8_ky_tu" }
+{ "name": "Nguyễn Văn A", "username": "alice", "password": "matkhau_it_nhat_8_ky_tu" }
 ```
-- Ràng buộc: username 3–50 ký tự `[A-Za-z0-9_.]`; password ≥ 8 ký tự, tối đa 72 byte UTF-8.
+- Ràng buộc: `name` 1–100 ký tự (bắt buộc, được trùng); username 3–50 ký tự `[A-Za-z0-9_.]`; password ≥ 8 ký tự, tối đa 72 byte UTF-8.
 
 **201** `{ "message": "Tạo tài khoản thành công" }`
 **400** validation · **409** `{ "message": "Tên đăng nhập đã tồn tại" }`
@@ -83,6 +83,25 @@ Body:
 **400** `{ "message": "Mật khẩu mới phải khác mật khẩu hiện tại" }`
 **400** validation body · **401** thiếu/sai token.
 Access token đang dùng vẫn hợp lệ tới khi hết hạn (30 phút); muốn đăng nhập lại phải dùng mật khẩu mới.
+
+### 2.6. Hồ sơ & đổi tên — `GET|PUT /api/users/me`
+
+Cần Bearer access token. Tài khoản luôn lấy từ token (không có id trên URL/body) nên chỉ đọc và sửa được hồ sơ của chính mình.
+
+**`GET /api/users/me`** → **200** `UserProfileDto` (trả trần, không bọc):
+```json
+{ "id": 1, "username": "alice", "name": "Nguyễn Văn A" }
+```
+
+**`PUT /api/users/me`** body:
+```json
+{ "name": "Tên mới" }
+```
+- Ràng buộc: `name` không rỗng, tối đa 100 ký tự (khoảng trắng đầu/cuối được trim trước khi lưu); tên **được phép trùng** giữa các tài khoản.
+- Chỉ đổi `name`; `username`, mật khẩu và token không bị ảnh hưởng.
+
+**200** `{ "message": "Cập nhật tên thành công", "data": { "id": 1, "username": "alice", "name": "Tên mới" } }`
+**400** validation (`details[].field = "name"`) · **401** thiếu/sai token.
 
 ## 3. Từ vựng — `/api/words`
 
@@ -242,7 +261,7 @@ Body:
 ```bash
 # 1) Đăng ký + đăng nhập
 curl -X POST http://localhost:8080/api/auth/register -H "Content-Type: application/json" \
-     -d '{"username":"alice","password":"matkhau_8_ky_tu"}'
+     -d '{"name":"Nguyễn Văn A","username":"alice","password":"matkhau_8_ky_tu"}'
 TOKEN=$(curl -s -X POST http://localhost:8080/api/auth/login -H "Content-Type: application/json" \
      -d '{"username":"alice","password":"matkhau_8_ky_tu"}' | jq -r .accessToken)
 

@@ -9,6 +9,10 @@ import jakarta.validation.constraints.Size;
  * body; details never contain the rejected value (§4:176).
  */
 public record RegisterForm(
+        @NotBlank(message = "Tên không được để trống")
+        @Size(max = 100, message = "Tên không được vượt quá 100 ký tự")
+        String name,
+
         @NotBlank(message = "Tên đăng nhập không được để trống")
         @Size(min = 3, max = 50, message = "Tên đăng nhập phải từ 3 đến 50 ký tự")
         @Pattern(regexp = "[A-Za-z0-9_.]+",
