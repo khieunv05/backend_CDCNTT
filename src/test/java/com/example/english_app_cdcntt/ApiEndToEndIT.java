@@ -338,6 +338,65 @@ class ApiEndToEndIT {
 
     @Test
     @Order(15)
+    @DisplayName("change-password replaces the hash, revokes sessions and enforces both 400 rules")
+    void changePassword_replacesHashAndRevokesSessions() {
+        String newPassword = "NewPassw0rd!456";
+
+        rest.post().uri("/api/auth/change-password")
+                .header(HttpHeaders.AUTHORIZATION, bearer())
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("currentPassword", password, "newPassword", newPassword))
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.message").isEqualTo("Đổi mật khẩu thành công");
+
+        Integer sessions = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM refresh_tokens WHERE user_id = (SELECT id FROM users WHERE username = ?)",
+                Integer.class, username);
+        assertThat(sessions).isZero();
+
+        rest.post().uri("/api/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("username", username, "password", password))
+                .exchange()
+                .expectStatus().isUnauthorized();
+
+        rest.post().uri("/api/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("username", username, "password", newPassword))
+                .exchange()
+                .expectStatus().isOk();
+
+        rest.post().uri("/api/auth/change-password")
+                .header(HttpHeaders.AUTHORIZATION, bearer())
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("currentPassword", "Wrong!12345", "newPassword", "Another!12345"))
+                .exchange()
+                .expectStatus().isBadRequest()
+                .expectBody()
+                .jsonPath("$.message").isEqualTo("Mật khẩu hiện tại không đúng");
+
+        rest.post().uri("/api/auth/change-password")
+                .header(HttpHeaders.AUTHORIZATION, bearer())
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("currentPassword", newPassword, "newPassword", newPassword))
+                .exchange()
+                .expectStatus().isBadRequest()
+                .expectBody()
+                .jsonPath("$.message").isEqualTo("Mật khẩu mới phải khác mật khẩu hiện tại");
+
+        // Restore the fixture password so a rerun/debug of this class keeps a known account.
+        rest.post().uri("/api/auth/change-password")
+                .header(HttpHeaders.AUTHORIZATION, bearer())
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("currentPassword", newPassword, "newPassword", password))
+                .exchange()
+                .expectStatus().isOk();
+    }
+
+    @Test
+    @Order(16)
     @DisplayName("DB end state: both words reviewed once, phrase deleted")
     void cleanup_removedAllRows() {
         Long words = jdbc.queryForObject(

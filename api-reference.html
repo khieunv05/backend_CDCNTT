@@ -109,10 +109,10 @@
 <div class="hero">
   <div class="hero-inner">
     <h1><span class="logo">📘</span> LEnglish — API Reference</h1>
-    <p>Tài liệu 16 endpoint của backend: kiểu dữ liệu trả về, định dạng request và mã trạng thái cho từng đường dẫn.
+    <p>Tài liệu 17 endpoint của backend: kiểu dữ liệu trả về, định dạng request và mã trạng thái cho từng đường dẫn.
        Mọi request/response đều là <b>JSON UTF-8</b>.</p>
     <div class="stats">
-      <div class="stat"><b>16</b> endpoint</div>
+      <div class="stat"><b>17</b> endpoint</div>
       <div class="stat"><b>JWT HS256</b> Bearer auth</div>
       <div class="stat"><b>Base URL</b> /api</div>
       <div class="stat"><b>10</b> kiểu DTO</div>
@@ -184,9 +184,9 @@
         <div class="ret-row"><span class="pill s-ok">200</span><div class="shape">
           <div class="t"><b>AuthResponse</b> — trả trực tiếp (không bọc)</div>
           <pre>{
-  <span class="key">"accessToken"</span>:  <span class="s">"eyJ..."</span>,   <span class="cm">// JWT HS256, hạn 15 phút</span>
+  <span class="key">"accessToken"</span>:  <span class="s">"eyJ..."</span>,   <span class="cm">// JWT HS256, hạn 30 phút</span>
   <span class="key">"refreshToken"</span>: <span class="s">"eyJ..."</span>,   <span class="cm">// JWT xoay vòng, hạn dài</span>
-  <span class="key">"expiresIn"</span>:    <span class="n">900</span>          <span class="cm">// số giây accessToken còn hạn</span>
+  <span class="key">"expiresIn"</span>:    <span class="n">1800</span>         <span class="cm">// số giây accessToken còn hạn</span>
 }</pre></div></div>
         <div class="ret-row"><span class="pill s-401">401</span><div class="shape"><div class="t"><b>ErrorResponse</b> — <code>{"message": "Đăng nhập thất bại"}</code> (không tiết lộ trường nào sai)</div></div></div>
       </div>
@@ -222,6 +222,24 @@
           <div class="t"><b>AuthResponse</b> — cặp token <b>mới</b> (token cũ bị xoá)</div></div></div>
         <div class="ret-row"><span class="pill s-401">401</span><div class="shape"><div class="t"><b>ErrorResponse</b> — <code>"Đăng nhập thất bại"</code> hoặc <code>"Phiên đăng nhập hết hạn"</code> (row bị xoá trước khi trả lỗi)</div></div></div>
       </div>
+    </div>
+  </div>
+  <div class="ep" id="change-password">
+    <div class="ep-head"><span class="pill post">POST</span><span class="path">/api/auth/change-password</span>
+      <span class="pill auth-pill">Bearer</span><span class="name">Đổi mật khẩu — thu hồi mọi phiên</span></div>
+    <div class="ep-body">
+      <div class="blk"><h4>Request body</h4>
+        <table><tr><th>Trường</th><th>Kiểu</th><th>Ràng buộc</th></tr>
+        <tr><td><code>currentPassword</code></td><td><span class="k">string</span></td><td>không rỗng, ≤ 72 byte UTF-8</td></tr>
+        <tr><td><code>newPassword</code></td><td><span class="k">string</span></td><td>≥ 8 ký tự, ≤ 72 byte UTF-8, khác mật khẩu hiện tại</td></tr></table></div>
+      <div class="blk ret"><h4>Response</h4>
+        <div class="ret-row"><span class="pill s-ok">200</span><div class="shape">
+          <div class="t"><b>MessageResponse</b> — hash BCrypt mới và toàn bộ refresh token bị xoá trong cùng transaction</div>
+          <pre>{ <span class="key">"message"</span>: <span class="s">"Đổi mật khẩu thành công"</span> }</pre></div></div>
+        <div class="ret-row"><span class="pill s-400">400</span><div class="shape"><div class="t"><b>ErrorResponse</b> — <code>"Mật khẩu hiện tại không đúng"</code>, <code>"Mật khẩu mới phải khác mật khẩu hiện tại"</code> hoặc validation body</div></div></div>
+        <div class="ret-row"><span class="pill s-401">401</span><div class="shape"><div class="t"><b>ErrorResponse</b> — thiếu hoặc sai Bearer token</div></div></div>
+      </div>
+      <div class="note">Tài khoản lấy từ token, không lấy từ body. Access token đang dùng vẫn sống tới khi hết hạn (30 phút); các phiên khác mất refresh token nên không gia hạn được.</div>
     </div>
   </div>
 </section>
@@ -545,7 +563,7 @@
   </div>
 </section>
 
-<footer>LEnglish API Reference · khớp <b>API_REFERENCE.md</b> · 16 endpoint · 10 DTO</footer>
+<footer>LEnglish API Reference · khớp <b>API_REFERENCE.md</b> · 17 endpoint · 10 DTO</footer>
 </div>
 </body>
 </html>

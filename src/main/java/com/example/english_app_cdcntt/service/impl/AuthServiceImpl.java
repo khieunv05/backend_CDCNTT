@@ -4,9 +4,12 @@ import com.example.english_app_cdcntt.dto.AuthResponse;
 import com.example.english_app_cdcntt.entity.User;
 import com.example.english_app_cdcntt.exception.DuplicateUsernameException;
 import com.example.english_app_cdcntt.exception.InvalidCredentialsException;
+import com.example.english_app_cdcntt.exception.PasswordReuseException;
 import com.example.english_app_cdcntt.exception.TokenExpiredException;
+import com.example.english_app_cdcntt.exception.WrongPasswordException;
 import com.example.english_app_cdcntt.repository.UserRepository;
 import com.example.english_app_cdcntt.service.AuthService;
+import com.example.english_app_cdcntt.service.tx.PasswordTxService;
 import com.example.english_app_cdcntt.service.tx.RefreshRotationResult;
 import com.example.english_app_cdcntt.service.tx.RefreshTokenTxService;
 import com.example.english_app_cdcntt.service.tx.RegistrationTxService;
@@ -31,13 +34,16 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
     private final RegistrationTxService registrationTxService;
     private final RefreshTokenTxService refreshTokenTxService;
+    private final PasswordTxService passwordTxService;
 
     public AuthServiceImpl(UserRepository userRepository, PasswordEncoder passwordEncoder,
-            RegistrationTxService registrationTxService, RefreshTokenTxService refreshTokenTxService) {
+            RegistrationTxService registrationTxService, RefreshTokenTxService refreshTokenTxService,
+            PasswordTxService passwordTxService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.registrationTxService = registrationTxService;
         this.refreshTokenTxService = refreshTokenTxService;
+        this.passwordTxService = passwordTxService;
     }
 
     /** §5.2:234 — pre-check inside the short transaction, UNIQUE constraint as last line of defense. */
@@ -81,6 +87,23 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public void logout(String presentedToken) {
         refreshTokenTxService.revoke(presentedToken);
+    }
+
+    /**
+     * Verifies the current password before any write; both 400 flavors are thrown here, outside
+     * the transaction, so a rejected attempt never touches the stored hash or the sessions.
+     */
+    @Override
+    public void changePassword(String username, String currentPassword, String newPassword) {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(InvalidCredentialsException::new);
+        if (!passwordEncoder.matches(currentPassword, user.getPassword())) {
+            throw new WrongPasswordException();
+        }
+        if (passwordEncoder.matches(newPassword, user.getPassword())) {
+            throw new PasswordReuseException();
+        }
+        passwordTxService.changePasswordAndRevokeSessions(user.getId(), passwordEncoder.encode(newPassword));
     }
 
     private static boolean isUsernameUniqueViolation(DataIntegrityViolationException e) {

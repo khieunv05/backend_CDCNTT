@@ -75,6 +75,16 @@ class AuthControllerSecurityTest {
     }
 
     @Test
+    @DisplayName("change-password is protected: no Bearer token answers the entry point 401")
+    void changePasswordWithoutTokenIsUnauthorized() throws Exception {
+        mockMvc.perform(post("/api/auth/change-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentPassword\":\"Old!12345\",\"newPassword\":\"New!12345\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value(INVALID_TOKEN_MESSAGE));
+    }
+
+    @Test
     @DisplayName("permitAll auth endpoint stays reachable without any token")
     void permitAllEndpointIsReachable() throws Exception {
         when(authService.login("alice", "s3cret!x")).thenReturn(new AuthResponse("a.b.c", "r.e.f", 900L));

@@ -126,7 +126,7 @@ src/test/java/com/example/english_app_cdcntt/
 ## 6. Tài liệu liên quan
 
 - [`KE_HOACH_TRIEN_KHAI.md`](KE_HOACH_TRIEN_KHAI.md) — đặc tả gốc 14 mục.
-- [`API_REFERENCE.md`](API_REFERENCE.md) — 14 endpoint: body, response, mã lỗi, ví dụ curl.
+- [`API_REFERENCE.md`](API_REFERENCE.md) — 17 endpoint: body, response, mã lỗi, ví dụ curl.
 - [`TIEN_DO_TRIEN_KHAI.md`](TIEN_DO_TRIEN_KHAI.md) — nhật ký tiến độ từng đợt.
 - [`HUONG_DAN_TEST_MYSQL.md`](HUONG_DAN_TEST_MYSQL.md) — dựng MySQL cho tầng IT.
 - [`HUONG_DAN_DOCKER.md`](HUONG_DAN_DOCKER.md) — dựng môi trường local bằng Docker Compose.

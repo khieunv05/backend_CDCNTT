@@ -5,14 +5,14 @@ File cần gửi cho tester: **`LEnglish.postman_collection.json`** (chỉ 1 fil
 ## 1. Import
 
 1. Mở Postman → **Import** (góc trên trái) → **Files** → chọn `LEnglish.postman_collection.json`.
-2. Collection **LEnglish — API Backend** xuất hiện ở sidebar, gồm 6 folder và 38 request.
+2. Collection **LEnglish — API Backend** xuất hiện ở sidebar, gồm 6 folder và 44 request.
 
 ## 2. Chạy
 
 - **Chạy toàn bộ:** chuột phải collection → **Run collection** → **Run LEnglish — API Backend**. Không cần nhập gì thêm, biến mặc định đã đủ.
 - **Chạy từng request:** mở folder, chọn request → **Send**. Nên chạy theo đúng thứ tự từ trên xuống (các request sau dùng `wordId`, `phraseId`... do request trước lưu lại).
 
-Kết quả mong đợi: **38/38 request pass, 90 assert pass** (Newman đếm thêm các request do script tự gửi khi refresh/login/tạo user B, nên chỉ số "requests" hiển thị 46 — không phải lỗi).
+Kết quả mong đợi: **44/44 request pass, 106 assert pass** (Newman đếm thêm các request do script tự gửi khi refresh/login/tạo user B, nên chỉ số "requests" hiển thị 52 — không phải lỗi).
 
 ## 3. Biến trong collection (Collection → Variables)
 
@@ -20,6 +20,7 @@ Kết quả mong đợi: **38/38 request pass, 90 assert pass** (Newman đếm t
 |---|---|---|
 | `baseUrl` | `http://localhost:8080` | Đổi thành IP/host server nếu backend chạy máy khác, ví dụ `http://192.168.1.5:8080` |
 | `username` / `password` | `tester01` / `Password123` | Request Register tự sinh `username` mới mỗi lần chạy |
+| `newPassword` | `Password456!` | Mật khẩu tạm cho cặp request đổi mật khẩu ở folder 01; request thứ hai đổi lại về `password` |
 | `accessToken`, `refreshToken`, `tokenExpiresAt` | (trống) | Request Login/Refresh tự lưu; collection tự refresh khi còn <60 giây hoặc tự login khi chưa có token |
 | `englishWord` | `serendipity` | Từ dùng cho Generate / Thêm từ |
 | `topic` | `Du lịch` | Chủ đề cho Generate-topic |
@@ -46,9 +47,22 @@ Sau đó gửi 3 request bằng token **user B** lên tài nguyên của A:
 
 Cuối mỗi request có bước **dọn dẹp**: user A tự xoá tài nguyên của mình, phải trả `200`. Câu assert `200` này quan trọng — nó chứng minh tài nguyên **có thật** và 403 phía trên là do sai chủ sở hữu, không phải vì tài nguyên không tồn tại (nếu chỉ thấy 403 mà không kiểm tra 200 thì một backend "chặn tất cả" cũng pass).
 
+## 3.2. Đổi mật khẩu (folder 01)
+
+Folder **01** có 2 request đi cặp, dùng biến `password` và `newPassword`:
+
+| Request | Body | Mong đợi |
+|---|---|---|
+| `Đổi mật khẩu — sang mật khẩu mới (200)` | `currentPassword={{password}}`, `newPassword={{newPassword}}` | `200` `"Đổi mật khẩu thành công"` |
+| `Đổi lại mật khẩu ban đầu (200)` | `currentPassword={{newPassword}}`, `newPassword={{password}}` | `200` |
+
+Backend lấy username từ Bearer token, **không** nhận username trong body. Mỗi lần đổi thành công, **toàn bộ refresh token bị thu hồi** (các thiết bị khác phải đăng nhập lại); access token đang dùng vẫn sống tới khi hết hạn (30 phút) nên collection chạy tiếp bình thường.
+
+Ca lỗi tương ứng nằm ở folder 04: sai mật khẩu hiện tại, trùng mật khẩu cũ, mật khẩu mới dưới 8 ký tự, và thiếu token.
+
 ## 4. Lưu ý khi test
 
-- **Không gửi token** ở 4 endpoint `/api/auth/*` (Register, Login, Refresh, Logout): đã đặt sẵn `No Auth`, đúng thiết kế backend.
+- **Không gửi token** ở 4 endpoint công khai `/api/auth/*` (Register, Login, Refresh, Logout): đã đặt sẵn `No Auth`, đúng thiết kế backend. Riêng `POST /api/auth/change-password` **bắt buộc** Bearer token (collection tự gắn).
 - **3 endpoint gọi AI** (`GET /api/words/generate`, `POST /api/words/generate-topic`, `POST /api/phrases`) chạy 5–15 giây là bình thường — đừng bấm Cancel. Nếu AI hết hạn mức/key sẽ trả **502** `"Dịch vụ AI tạm thời không khả dụng"`, không phải lỗi API.
 - **Ca lỗi 403 ở folder 04 là đúng:** xoá lại từ/đoạn văn vừa xoá phải trả 403 (backend không tiết lộ tài nguyên có tồn tại hay không). Folder 05 kiểm tra 403 ở góc độ khác: tài nguyên còn sống nhưng do user khác sở hữu.
 - **Ca 400 của đoạn văn (folder 04):** `POST /api/phrases` thiếu/để trống `title`, `title` dài quá 255 ký tự, `text` quá ngắn hoặc toàn khoảng trắng → `400` `"Đoạn văn gửi lên không hợp lệ"`. Riêng endpoint này backend trả **một câu lỗi cố định, chỉ có `message`** (không có `details[]` như `/api/words`), nên đừng thắc mắc khi không thấy chi tiết field.

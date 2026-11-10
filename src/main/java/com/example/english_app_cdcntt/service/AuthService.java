@@ -39,4 +39,10 @@ public interface AuthService {
 
     /** §5.2:237 — revoke the session; a token no longer stored still answers 200 (idempotent). */
     void logout(String presentedToken);
+
+    /**
+     * Change the authenticated account's password: verify the current one, refuse reuse, then
+     * replace the hash and revoke every refresh token in a single transaction.
+     */
+    void changePassword(String username, String currentPassword, String newPassword);
 }

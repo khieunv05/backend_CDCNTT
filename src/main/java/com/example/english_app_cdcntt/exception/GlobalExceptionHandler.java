@@ -81,6 +81,16 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new ErrorResponse(e.getMessage()));
     }
 
+    @ExceptionHandler(WrongPasswordException.class)
+    ResponseEntity<ErrorResponse> handleWrongPassword(WrongPasswordException e) {
+        return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+    }
+
+    @ExceptionHandler(PasswordReuseException.class)
+    ResponseEntity<ErrorResponse> handlePasswordReuse(PasswordReuseException e) {
+        return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+    }
+
     @ExceptionHandler(DuplicateWordException.class)
     ResponseEntity<ErrorResponse> handleDuplicateWord(DuplicateWordException e) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(e.getMessage()));

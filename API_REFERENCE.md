@@ -1,6 +1,6 @@
 # LEnglish — API Reference (§4.1)
 
-Tài liệu tham chiếu cho **16 endpoint** của backend LEnglish (§4.1 bảng `KE_HOACH_TRIEN_KHAI.md`).
+Tài liệu tham chiếu cho **17 endpoint** của backend LEnglish (§4.1 bảng `KE_HOACH_TRIEN_KHAI.md`).
 Tất cả request/response body đều là JSON UTF-8.
 
 ## 1. Quy ước chung
@@ -46,7 +46,7 @@ Body:
 
 Body: giống register. **200**:
 ```json
-{ "accessToken": "eyJ...", "refreshToken": "eyJ...", "expiresIn": 900 }
+{ "accessToken": "eyJ...", "refreshToken": "eyJ...", "expiresIn": 1800 }
 ```
 **401** `{ "message": "Đăng nhập thất bại" }` (không tiết lộ trường sai).
 
@@ -66,6 +66,23 @@ Body: `{ "refreshToken": "eyJ..." }` (không cần Bearer).
 **200** `AuthResponse` mới (cặp token mới).
 **401** `{ "message": "Đăng nhập thất bại" }` hoặc `{ "message": "Phiên đăng nhập hết hạn" }`
 (hết hạn trong DB → row bị xóa trước khi trả lỗi).
+
+### 2.5. Đổi mật khẩu — `POST /api/auth/change-password`
+
+Cần Bearer access token. Tài khoản lấy từ token, không lấy từ body — chỉ đổi được mật khẩu của chính mình.
+
+Body:
+```json
+{ "currentPassword": "matkhau_cu", "newPassword": "matkhau_moi_it_nhat_8_ky_tu" }
+```
+- Ràng buộc: `currentPassword` không rỗng, ≤ 72 byte UTF-8; `newPassword` ≥ 8 ký tự, ≤ 72 byte UTF-8 và phải khác mật khẩu hiện tại.
+- Thành công: cập nhật hash BCrypt **và** xoá toàn bộ refresh token của tài khoản trong cùng một transaction (các phiên khác bị đăng xuất).
+
+**200** `{ "message": "Đổi mật khẩu thành công" }`
+**400** `{ "message": "Mật khẩu hiện tại không đúng" }`
+**400** `{ "message": "Mật khẩu mới phải khác mật khẩu hiện tại" }`
+**400** validation body · **401** thiếu/sai token.
+Access token đang dùng vẫn hợp lệ tới khi hết hạn (30 phút); muốn đăng nhập lại phải dùng mật khẩu mới.
 
 ## 3. Từ vựng — `/api/words`
 

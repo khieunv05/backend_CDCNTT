@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -29,8 +30,11 @@ import com.example.english_app_cdcntt.dto.AuthResponse;
 import com.example.english_app_cdcntt.entity.User;
 import com.example.english_app_cdcntt.exception.DuplicateUsernameException;
 import com.example.english_app_cdcntt.exception.InvalidCredentialsException;
+import com.example.english_app_cdcntt.exception.PasswordReuseException;
 import com.example.english_app_cdcntt.exception.TokenExpiredException;
+import com.example.english_app_cdcntt.exception.WrongPasswordException;
 import com.example.english_app_cdcntt.repository.UserRepository;
+import com.example.english_app_cdcntt.service.tx.PasswordTxService;
 import com.example.english_app_cdcntt.service.tx.RefreshRotationResult;
 import com.example.english_app_cdcntt.service.tx.RefreshTokenTxService;
 import com.example.english_app_cdcntt.service.tx.RegistrationTxService;
@@ -53,11 +57,15 @@ class AuthServiceImplTest {
     @Mock
     private RefreshTokenTxService refreshTokenTxService;
 
+    @Mock
+    private PasswordTxService passwordTxService;
+
     private AuthServiceImpl authService;
 
     @BeforeEach
     void setUp() {
-        authService = new AuthServiceImpl(userRepository, passwordEncoder, registrationTxService, refreshTokenTxService);
+        authService = new AuthServiceImpl(userRepository, passwordEncoder, registrationTxService,
+                refreshTokenTxService, passwordTxService);
     }
 
     // ---------------------------------------------------------------- register
@@ -223,5 +231,65 @@ class AuthServiceImplTest {
 
         verify(refreshTokenTxService).revoke("presented-token");
         verifyNoInteractions(userRepository, passwordEncoder, registrationTxService);
+    }
+
+    // --------------------------------------------------------- change password
+
+    @Test
+    @DisplayName("changePassword băm mật khẩu mới và giao cho tx đổi hash + thu hồi phiên")
+    void changePassword_encodesAndDelegatesToTransaction() {
+        User user = mock(User.class);
+        when(user.getId()).thenReturn(7L);
+        when(user.getPassword()).thenReturn("stored-hash");
+        when(userRepository.findByUsername("alice")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("OldPass!123", "stored-hash")).thenReturn(true);
+        when(passwordEncoder.matches("NewPass!456", "stored-hash")).thenReturn(false);
+        when(passwordEncoder.encode("NewPass!456")).thenReturn("new-hash");
+
+        authService.changePassword("alice", "OldPass!123", "NewPass!456");
+
+        verify(passwordTxService).changePasswordAndRevokeSessions(7L, "new-hash");
+        verify(refreshTokenTxService, never()).revoke(anyString());
+    }
+
+    @Test
+    @DisplayName("changePassword ném WrongPasswordException khi mật khẩu hiện tại sai, không ghi gì")
+    void changePassword_throwsWrongPasswordWithoutWriting() {
+        User user = mock(User.class);
+        when(user.getPassword()).thenReturn("stored-hash");
+        when(userRepository.findByUsername("alice")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("Wrong!123", "stored-hash")).thenReturn(false);
+
+        assertThatThrownBy(() -> authService.changePassword("alice", "Wrong!123", "NewPass!456"))
+                .isInstanceOf(WrongPasswordException.class);
+
+        verifyNoInteractions(passwordTxService);
+        verify(passwordEncoder, never()).encode(anyString());
+    }
+
+    @Test
+    @DisplayName("changePassword ném PasswordReuseException khi mật khẩu mới trùng mật khẩu cũ")
+    void changePassword_throwsPasswordReuseWhenNewEqualsOld() {
+        User user = mock(User.class);
+        when(user.getPassword()).thenReturn("stored-hash");
+        when(userRepository.findByUsername("alice")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("SamePass!123", "stored-hash")).thenReturn(true);
+
+        assertThatThrownBy(() -> authService.changePassword("alice", "SamePass!123", "SamePass!123"))
+                .isInstanceOf(PasswordReuseException.class);
+
+        verifyNoInteractions(passwordTxService);
+        verify(passwordEncoder, never()).encode(anyString());
+    }
+
+    @Test
+    @DisplayName("changePassword ném InvalidCredentialsException khi tài khoản trong token không còn")
+    void changePassword_throwsInvalidCredentialsWhenAccountMissing() {
+        when(userRepository.findByUsername("ghost")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> authService.changePassword("ghost", "OldPass!123", "NewPass!456"))
+                .isInstanceOf(InvalidCredentialsException.class);
+
+        verifyNoInteractions(passwordTxService);
     }
 }

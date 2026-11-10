@@ -23,7 +23,9 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import com.example.english_app_cdcntt.exception.DuplicateUsernameException;
 import com.example.english_app_cdcntt.exception.GlobalExceptionHandler;
 import com.example.english_app_cdcntt.exception.InvalidCredentialsException;
+import com.example.english_app_cdcntt.exception.PasswordReuseException;
 import com.example.english_app_cdcntt.exception.TokenExpiredException;
+import com.example.english_app_cdcntt.exception.WrongPasswordException;
 import com.example.english_app_cdcntt.service.AuthService;
 
 @ExtendWith(MockitoExtension.class)
@@ -32,6 +34,9 @@ class AuthControllerTest {
 
     private static final String REGISTER_SUCCESS = "Tạo tài khoản thành công";
     private static final String LOGOUT_SUCCESS = "Đăng xuất thành công";
+    private static final String CHANGE_PASSWORD_SUCCESS = "Đổi mật khẩu thành công";
+    private static final String CHANGE_PASSWORD_BODY =
+            "{\"currentPassword\":\"OldPass!123\",\"newPassword\":\"NewPass!456\"}";
 
     @Mock
     private AuthService authService;
@@ -166,6 +171,60 @@ class AuthControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{not json"))
                 .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    @DisplayName("POST /api/auth/change-password returns 200 and passes the authenticated username")
+    void changePasswordReturnsOk() throws Exception {
+        mockMvc.perform(post("/api/auth/change-password")
+                        .principal(() -> "alice")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(CHANGE_PASSWORD_BODY))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value(CHANGE_PASSWORD_SUCCESS));
+
+        verify(authService).changePassword("alice", "OldPass!123", "NewPass!456");
+    }
+
+    @Test
+    @DisplayName("change-password maps WrongPasswordException to 400 with its own message")
+    void changePasswordWrongCurrentIsBadRequest() throws Exception {
+        doThrow(new WrongPasswordException())
+                .when(authService).changePassword(anyString(), anyString(), anyString());
+
+        mockMvc.perform(post("/api/auth/change-password")
+                        .principal(() -> "alice")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(CHANGE_PASSWORD_BODY))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Mật khẩu hiện tại không đúng"));
+    }
+
+    @Test
+    @DisplayName("change-password maps PasswordReuseException to 400 with its own message")
+    void changePasswordReuseIsBadRequest() throws Exception {
+        doThrow(new PasswordReuseException())
+                .when(authService).changePassword(anyString(), anyString(), anyString());
+
+        mockMvc.perform(post("/api/auth/change-password")
+                        .principal(() -> "alice")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(CHANGE_PASSWORD_BODY))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Mật khẩu mới phải khác mật khẩu hiện tại"));
+    }
+
+    @Test
+    @DisplayName("change-password rejects a too-short new password with the validation body")
+    void changePasswordTooShortIsBadRequest() throws Exception {
+        mockMvc.perform(post("/api/auth/change-password")
+                        .principal(() -> "alice")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentPassword\":\"OldPass!123\",\"newPassword\":\"short\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.details").isArray());
 
         verifyNoInteractions(authService);
     }
