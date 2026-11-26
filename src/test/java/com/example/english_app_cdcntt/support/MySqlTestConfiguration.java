@@ -1,7 +1,10 @@
 package com.example.english_app_cdcntt.support;
 
+import com.example.english_app_cdcntt.service.EmailSender;
+import com.example.english_app_cdcntt.support.RecordingEmailSender;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.core.env.Environment;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
@@ -12,6 +15,16 @@ import javax.sql.DataSource;
 public class MySqlTestConfiguration {
     public static final String TEST_URL = "jdbc:mysql://localhost:3306/lenglish_test"
             + "?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true";
+
+    /**
+     * Replaces the Brevo adapter in every Spring test context: no SMTP socket is opened, and a test
+     * can read the mailed code back through {@link RecordingEmailSender#latestCode}.
+     */
+    @Bean
+    @Primary
+    RecordingEmailSender emailSender() {
+        return new RecordingEmailSender();
+    }
 
     @Bean
     DataSource dataSource(Environment environment) {

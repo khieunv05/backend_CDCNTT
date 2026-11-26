@@ -1,5 +1,7 @@
 package com.example.english_app_cdcntt.repository;
 
+import com.example.english_app_cdcntt.support.TestUsers;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -66,8 +68,8 @@ class RepositoryLayerIT {
 
     @BeforeEach
     void createUsers() {
-        alice = userRepository.saveAndFlush(User.create("user-a-" + RUN_ID, "user-a-" + RUN_ID, "hash-alice"));
-        bob = userRepository.saveAndFlush(User.create("user-b-" + RUN_ID, "user-b-" + RUN_ID, "hash-bob"));
+        alice = userRepository.saveAndFlush(TestUsers.create("user-a-" + RUN_ID, "user-a-" + RUN_ID, "hash-alice"));
+        bob = userRepository.saveAndFlush(TestUsers.create("user-b-" + RUN_ID, "user-b-" + RUN_ID, "hash-bob"));
     }
 
     @Test
@@ -191,7 +193,7 @@ class RepositoryLayerIT {
         assertThat(userRepository.existsByUsername(alice.getUsername())).isTrue();
 
         // uk_users_username — last database action of this test
-        assertThatThrownBy(() -> userRepository.saveAndFlush(User.create(alice.getUsername(), alice.getUsername(), "other-hash")))
+        assertThatThrownBy(() -> userRepository.saveAndFlush(TestUsers.create(alice.getUsername(), alice.getUsername(), "other-hash")))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 

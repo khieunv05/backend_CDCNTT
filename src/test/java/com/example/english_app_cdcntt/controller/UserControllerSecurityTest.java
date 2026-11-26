@@ -14,6 +14,7 @@ import com.example.english_app_cdcntt.config.TokenType;
 import com.example.english_app_cdcntt.config.UserPrincipal;
 import com.example.english_app_cdcntt.dto.UserProfileDto;
 import com.example.english_app_cdcntt.exception.GlobalExceptionHandler;
+import com.example.english_app_cdcntt.service.IpRateLimiter;
 import com.example.english_app_cdcntt.service.UserService;
 import java.time.Instant;
 import org.junit.jupiter.api.DisplayName;
@@ -44,6 +45,9 @@ class UserControllerSecurityTest {
 
     @MockitoBean
     private UserService userService;
+
+    @MockitoBean
+    private IpRateLimiter ipRateLimiter;
 
     @MockitoBean
     private JwtService jwtService;

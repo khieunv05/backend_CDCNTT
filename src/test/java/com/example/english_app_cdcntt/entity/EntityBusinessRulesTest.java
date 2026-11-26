@@ -1,5 +1,7 @@
 package com.example.english_app_cdcntt.entity;
 
+import com.example.english_app_cdcntt.support.TestUsers;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -21,7 +23,7 @@ class EntityBusinessRulesTest {
     private static final Instant NOW = Instant.parse("2026-01-15T08:00:00Z");
 
     private static User user() {
-        return User.create("alice", "alice", "$2a$10$hashed-secret-value");
+        return TestUsers.create("alice", "alice", "$2a$10$hashed-secret-value");
     }
 
     private static <T> T withId(T entity, long id) {
@@ -35,7 +37,7 @@ class EntityBusinessRulesTest {
 
         @Test
         void createStoresUsernameAndHash() {
-            User created = User.create("alice", "Alice Nguyen", "hash");
+            User created = TestUsers.create("alice", "Alice Nguyen", "hash");
             assertThat(created.getUsername()).isEqualTo("alice");
             assertThat(created.getName()).isEqualTo("Alice Nguyen");
             assertThat(created.getPassword()).isEqualTo("hash");
@@ -44,13 +46,13 @@ class EntityBusinessRulesTest {
 
         @Test
         void createRejectsNullFields() {
-            assertThatThrownBy(() -> User.create(null, null, "hash"))
+            assertThatThrownBy(() -> TestUsers.create(null, null, "hash"))
                     .isInstanceOf(NullPointerException.class)
                     .hasMessage("username");
-            assertThatThrownBy(() -> User.create("alice", "alice", null))
+            assertThatThrownBy(() -> TestUsers.create("alice", "alice", null))
                     .isInstanceOf(NullPointerException.class)
                     .hasMessage("password");
-            assertThatThrownBy(() -> User.create("alice", null, "hash"))
+            assertThatThrownBy(() -> TestUsers.create("alice", null, "hash"))
                     .isInstanceOf(NullPointerException.class)
                     .hasMessage("name");
         }
@@ -367,9 +369,9 @@ class EntityBusinessRulesTest {
 
         @Test
         void equalsAndHashCodeUseIdOnly() {
-            User sameIdA = withId(User.create("alice", "alice", "h1"), 42L);
-            User sameIdB = withId(User.create("bob", "bob", "h2"), 42L);
-            User otherId = withId(User.create("alice", "alice", "h1"), 43L);
+            User sameIdA = withId(TestUsers.create("alice", "alice", "h1"), 42L);
+            User sameIdB = withId(TestUsers.create("bob", "bob", "h2"), 42L);
+            User otherId = withId(TestUsers.create("alice", "alice", "h1"), 43L);
 
             assertThat(sameIdA).isEqualTo(sameIdB).hasSameHashCodeAs(sameIdB);
             assertThat(sameIdA).isNotEqualTo(otherId);

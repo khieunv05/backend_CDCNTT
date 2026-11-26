@@ -5,7 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.example.english_app_cdcntt.enums.Level;
 import com.example.english_app_cdcntt.enums.PartOfSpeech;
 import com.example.english_app_cdcntt.service.AiClient;
+import com.example.english_app_cdcntt.service.EmailPurpose;
 import com.example.english_app_cdcntt.support.MySqlTestConfiguration;
+import com.example.english_app_cdcntt.support.RecordingEmailSender;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import java.util.List;
@@ -47,6 +49,9 @@ class ApiEndToEndIT {
     @Autowired
     private JdbcTemplate jdbc;
 
+    @Autowired
+    private RecordingEmailSender emailSender;
+
     /** Jackson 3 mapper (Boot 4 auto-configures tools.jackson, not com.fasterxml). */
     private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -55,6 +60,7 @@ class ApiEndToEndIT {
 
     private static String username;
     private static String password;
+    private static String email;
     private static String accessToken;
     private static String refreshToken;
     private static long wordId1;
@@ -65,6 +71,7 @@ class ApiEndToEndIT {
     static void init() {
         username = "e2e_user_" + Long.toUnsignedString(System.nanoTime());
         password = "Passw0rd!123";
+        email = "e2e_" + Long.toUnsignedString(System.nanoTime()) + "@example.test";
     }
 
     @AfterAll
@@ -76,6 +83,8 @@ class ApiEndToEndIT {
         jdbc.update("DELETE FROM phrases WHERE user_id = (SELECT id FROM users WHERE username = ?)", username);
         jdbc.update("DELETE FROM words WHERE user_id = (SELECT id FROM users WHERE username = ?)", username);
         jdbc.update("DELETE FROM refresh_tokens WHERE user_id = (SELECT id FROM users WHERE username = ?)", username);
+        jdbc.update("DELETE FROM password_reset_codes WHERE user_id = (SELECT id FROM users WHERE username = ?)", username);
+        jdbc.update("DELETE FROM pending_registrations WHERE email = ?", email);
         jdbc.update("DELETE FROM users WHERE username = ?", username);
         // word_cache là bảng dùng chung, không gắn user: /api/words/generate (Order 5) ghi vào đây
         // và commit thật. Không dọn thì trên DB mới tinh nó chiếm PRIMARY id=1, làm
@@ -90,15 +99,49 @@ class ApiEndToEndIT {
 
     @Test
     @Order(1)
-    @DisplayName("register creates the account (201)")
-    void register_createsAccount() {
+    @DisplayName("register mails a code and creates nothing until that code is confirmed")
+    void register_sendsCodeThenCreatesAccount() {
         rest.post().uri("/api/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(Map.of("name", "Người kiểm thử", "username", username, "password", password))
+                .body(Map.of("name", "Người kiểm thử", "username", username,
+                        "email", email, "password", password))
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.message").isEqualTo("Mã xác thực đã được gửi tới email");
+
+        Integer accounts = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM users WHERE username = ?", Integer.class, username);
+        assertThat(accounts).isZero();
+        Integer drafts = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM pending_registrations WHERE email = ?", Integer.class, email);
+        assertThat(drafts).isEqualTo(1);
+
+        String code = emailSender.latestCode(email, EmailPurpose.REGISTRATION).orElseThrow();
+        assertThat(code).hasSize(6);
+
+        rest.post().uri("/api/auth/register/confirm")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("email", email, "code", code.equals("000000") ? "111111" : "000000"))
+                .exchange()
+                .expectStatus().isBadRequest()
+                .expectBody()
+                .jsonPath("$.message").isEqualTo("Mã xác thực không đúng hoặc đã hết hạn");
+
+        rest.post().uri("/api/auth/register/confirm")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("email", email, "code", code))
                 .exchange()
                 .expectStatus().isCreated()
                 .expectBody()
                 .jsonPath("$.message").isEqualTo("Tạo tài khoản thành công");
+
+        Long created = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM users WHERE username = ? AND email = ?", Long.class, username, email);
+        assertThat(created).isEqualTo(1L);
+        Integer draftsLeft = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM pending_registrations WHERE email = ?", Integer.class, email);
+        assertThat(draftsLeft).isZero();
     }
 
     @Test
@@ -448,5 +491,96 @@ class ApiEndToEndIT {
         assertThat(words).isEqualTo(2L);
         assertThat(reviewed).isEqualTo(2L);
         assertThat(phrases).isZero();
+    }
+
+    @Test
+    @Order(18)
+    @DisplayName("a session opened right before recovery is the one the reset will revoke")
+    void openSessionBeforeReset() throws Exception {
+        String body = rest.post().uri("/api/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("username", username, "password", password))
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(String.class).returnResult().getResponseBody();
+        accessToken = JSON.readTree(body).path("accessToken").asText();
+        Integer sessions = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM refresh_tokens WHERE user_id = (SELECT id FROM users WHERE username = ?)",
+                Integer.class, username);
+        assertThat(sessions).isEqualTo(1);
+    }
+
+    @Test
+    @Order(19)
+    @DisplayName("forgot-password answers the same 200 for a known and an unknown email")
+    void forgotPasswordIsBlind() {
+        rest.post().uri("/api/auth/forgot-password")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("email", "ghost_" + email))
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.message").isEqualTo("Nếu email này đã đăng ký, mã xác thực đã được gửi tới email đó");
+
+        rest.post().uri("/api/auth/forgot-password")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("email", email))
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.message").isEqualTo("Nếu email này đã đăng ký, mã xác thực đã được gửi tới email đó");
+
+        assertThat(emailSender.latestCode(email, EmailPurpose.PASSWORD_RESET)).isPresent();
+    }
+
+    @Test
+    @Order(20)
+    @DisplayName("reset-password rejects a wrong code and accepts the mailed one")
+    void resetPasswordWithMailedCode() {
+        String newPassword = "Recovered!789";
+        String code = emailSender.latestCode(email, EmailPurpose.PASSWORD_RESET).orElseThrow();
+
+        rest.post().uri("/api/auth/reset-password")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("email", email, "code", code.equals("000000") ? "111111" : "000000",
+                        "newPassword", newPassword))
+                .exchange()
+                .expectStatus().isBadRequest()
+                .expectBody()
+                .jsonPath("$.message").isEqualTo("Mã xác thực không đúng hoặc đã hết hạn");
+
+        rest.post().uri("/api/auth/reset-password")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("email", email, "code", code, "newPassword", newPassword))
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.message").isEqualTo("Đặt lại mật khẩu thành công");
+    }
+
+    @Test
+    @Order(21)
+    @DisplayName("the reset revoked every session and only the new password logs in")
+    void resetRevokedSessions() {
+        Integer sessions = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM refresh_tokens WHERE user_id = (SELECT id FROM users WHERE username = ?)",
+                Integer.class, username);
+        assertThat(sessions).isZero();
+
+        rest.post().uri("/api/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("username", username, "password", password))
+                .exchange()
+                .expectStatus().isUnauthorized()
+                .expectBody()
+                .jsonPath("$.message").isEqualTo("Đăng nhập thất bại");
+
+        rest.post().uri("/api/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("username", username, "password", "Recovered!789"))
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.accessToken").isNotEmpty();
     }
 }

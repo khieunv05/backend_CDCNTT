@@ -1,5 +1,7 @@
 package com.example.english_app_cdcntt.service;
 
+import com.example.english_app_cdcntt.support.TestUsers;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -60,8 +62,8 @@ class WordFlowIT {
 
     @BeforeEach
     void createUsers() {
-        aliceId = userRepository.saveAndFlush(User.create("flow-a-" + RUN_ID, "flow-a-" + RUN_ID, "hash-alice")).getId();
-        bobId = userRepository.saveAndFlush(User.create("flow-b-" + RUN_ID, "flow-b-" + RUN_ID, "hash-bob")).getId();
+        aliceId = userRepository.saveAndFlush(TestUsers.create("flow-a-" + RUN_ID, "flow-a-" + RUN_ID, "hash-alice")).getId();
+        bobId = userRepository.saveAndFlush(TestUsers.create("flow-b-" + RUN_ID, "flow-b-" + RUN_ID, "hash-bob")).getId();
     }
 
     @AfterEach

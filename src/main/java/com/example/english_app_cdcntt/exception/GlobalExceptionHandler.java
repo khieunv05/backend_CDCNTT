@@ -71,6 +71,30 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(e.getMessage()));
     }
 
+    @ExceptionHandler(DuplicateEmailException.class)
+    ResponseEntity<ErrorResponse> handleDuplicateEmail(DuplicateEmailException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(e.getMessage()));
+    }
+
+    /** §5.2 — wrong, expired and missing codes share one 400 text, so nothing leaks about accounts. */
+    @ExceptionHandler(InvalidVerificationCodeException.class)
+    ResponseEntity<ErrorResponse> handleInvalidCode(InvalidVerificationCodeException e) {
+        return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+    }
+
+    /** §5.2 — resend cooldown / hourly quota, only on the register endpoint. */
+    @ExceptionHandler(TooManyRequestsException.class)
+    ResponseEntity<ErrorResponse> handleTooManyRequests(TooManyRequestsException e) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(new ErrorResponse(e.getMessage()));
+    }
+
+    /** §8.2 style: the caller sees one fixed text, the provider error only reaches the log. */
+    @ExceptionHandler(EmailDeliveryException.class)
+    ResponseEntity<ErrorResponse> handleEmailDelivery(EmailDeliveryException e) {
+        log.warn("Email delivery failure: {}", e.getMessage(), e.getCause());
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(new ErrorResponse(e.getMessage()));
+    }
+
     @ExceptionHandler(InvalidCredentialsException.class)
     ResponseEntity<ErrorResponse> handleInvalidCredentials(InvalidCredentialsException e) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new ErrorResponse(e.getMessage()));

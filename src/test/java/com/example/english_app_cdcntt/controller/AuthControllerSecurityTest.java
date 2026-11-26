@@ -14,6 +14,9 @@ import com.example.english_app_cdcntt.config.UserPrincipal;
 import com.example.english_app_cdcntt.dto.AuthResponse;
 import com.example.english_app_cdcntt.exception.GlobalExceptionHandler;
 import com.example.english_app_cdcntt.service.AuthService;
+import com.example.english_app_cdcntt.service.IpRateLimiter;
+import com.example.english_app_cdcntt.service.PasswordResetService;
+import com.example.english_app_cdcntt.service.RegistrationService;
 import io.jsonwebtoken.MalformedJwtException;
 import java.time.Instant;
 import org.junit.jupiter.api.DisplayName;
@@ -48,6 +51,15 @@ class AuthControllerSecurityTest {
 
     @MockitoBean
     private AuthService authService;
+
+    @MockitoBean
+    private RegistrationService registrationService;
+
+    @MockitoBean
+    private PasswordResetService passwordResetService;
+
+    @MockitoBean
+    private IpRateLimiter ipRateLimiter;
 
     @MockitoBean
     private JwtService jwtService;
@@ -94,6 +106,50 @@ class AuthControllerSecurityTest {
                         .content(LOGIN_BODY))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").value("a.b.c"));
+    }
+
+    @Test
+    @DisplayName("the new registration step 1 is permitAll without a token")
+    void registerStartIsReachableWithoutToken() throws Exception {
+        when(ipRateLimiter.tryAcquire(org.mockito.ArgumentMatchers.anyString())).thenReturn(true);
+
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Alice\",\"username\":\"alice\",\"email\":\"alice@example.test\",\"password\":\"s3cret!x\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value(AuthController.REGISTER_CODE_SENT_MESSAGE));
+    }
+
+    @Test
+    @DisplayName("registration confirm is permitAll without a token")
+    void registerConfirmIsReachableWithoutToken() throws Exception {
+        mockMvc.perform(post("/api/auth/register/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"alice@example.test\",\"code\":\"123456\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.message").value(AuthController.REGISTER_SUCCESS_MESSAGE));
+    }
+
+    @Test
+    @DisplayName("forgot-password is permitAll without a token")
+    void forgotPasswordIsReachableWithoutToken() throws Exception {
+        when(ipRateLimiter.tryAcquire(org.mockito.ArgumentMatchers.anyString())).thenReturn(true);
+
+        mockMvc.perform(post("/api/auth/forgot-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"alice@example.test\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value(AuthController.FORGOT_PASSWORD_MESSAGE));
+    }
+
+    @Test
+    @DisplayName("reset-password is permitAll without a token")
+    void resetPasswordIsReachableWithoutToken() throws Exception {
+        mockMvc.perform(post("/api/auth/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"alice@example.test\",\"code\":\"123456\",\"newPassword\":\"New!12345\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value(AuthController.RESET_PASSWORD_SUCCESS_MESSAGE));
     }
 
     @Test

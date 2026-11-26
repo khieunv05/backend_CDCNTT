@@ -14,8 +14,8 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
- * Stateless JWT chain per plan §5.3: CSRF off, session STATELESS, permitAll only the four POST
- * auth endpoints, authenticated for the rest of {@code /api/**}, denyAll everywhere else.
+ * Stateless JWT chain per plan §5.3: CSRF off, session STATELESS, permitAll only the seven
+ * public POST auth endpoints, authenticated for the rest of {@code /api/**}, denyAll everywhere else.
  * {@code /error} is permitted because Boot's ERROR dispatch passes through this chain
  * (spring.security.filter.dispatcher-types includes ERROR). The JWT filter is constructed here
  * instead of being a bean, so the servlet container cannot register it a second time.
@@ -35,8 +35,9 @@ public class SecurityConfig {
                 .authorizeHttpRequests(registry -> registry
                         .requestMatchers("/error").permitAll()
                         .requestMatchers(HttpMethod.POST,
-                                "/api/auth/register", "/api/auth/login",
-                                "/api/auth/logout", "/api/auth/refresh")
+                                "/api/auth/register", "/api/auth/register/confirm",
+                                "/api/auth/forgot-password", "/api/auth/reset-password",
+                                "/api/auth/login", "/api/auth/logout", "/api/auth/refresh")
                         .permitAll()
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().denyAll())
