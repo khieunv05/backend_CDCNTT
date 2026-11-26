@@ -102,13 +102,13 @@ Ghi chú bắt buộc:
 - **Không log mã** ra console/CI/Postman Console và không dán mã vào mô tả request, commit hay ảnh chụp.
   Nếu cần debug, chỉ ghi "đã nhận mã" — không ghi giá trị.
 - Mã đăng ký hết hạn sau **10 phút**, mã khôi phục sau **15 phút**; mã dùng một lần, mã mới huỷ mã cũ.
-  Gửi lại = gọi lại chính endpoint đó; cooldown **60 giây**, tối đa **5 mã/giờ/email**.
+  Gửi lại = gọi lại chính endpoint đó, không có cooldown hay hạn mức số lần gửi.
 - `register` lỗi `409` khi username/email đã thuộc tài khoản (hoặc username bị bản nháp mailbox khác giữ),
-  `429` khi vượt hạn mức, `502` khi SMTP lỗi — **bản nháp vẫn được giữ**, gửi lại sau.
+  `502` khi SMTP lỗi — **bản nháp vẫn được giữ**, gửi lại sau.
 - `register/confirm` và `reset-password` trả **cùng một `400`** cho mã sai/hết hạn (và cả email không
   tồn tại ở luồng reset): `"Mã xác thực không đúng hoặc đã hết hạn"`. Sai 5 lần → huỷ mã.
-- `forgot-password` **luôn `200`** dù email có tài khoản hay không, và vẫn `200` im lặng khi bị rate-limit
-  hoặc SMTP lỗi — đây là chủ đích chống dò tài khoản, không phải lỗi.
+- `forgot-password` **luôn `200`** dù email có tài khoản hay không, và vẫn `200` im lặng khi SMTP lỗi
+  — đây là chủ đích chống dò tài khoản, không phải lỗi.
 - `reset-password` thu hồi **toàn bộ refresh token** của tài khoản và **không trả token**: client phải gọi
   `POST /api/auth/login` bằng mật khẩu mới. Mật khẩu mới trùng mật khẩu cũ → `400`
   `"Mật khẩu mới phải khác mật khẩu hiện tại"` (chỉ so sau khi mã hợp lệ).
@@ -134,7 +134,6 @@ Ghi chú bắt buộc:
 | Register trả 409 `"Tên đăng nhập đã tồn tại"` | Chỉ xảy ra khi sửa tay `username`; cứ chạy lại request, script tự đổi username |
 | Generate-topic trả 400 `"Chủ đề không hợp lệ..."` | Sửa biến `topic` thành chủ đề khác (tiếng Việt hoặc Anh đều được) |
 | Register trả 409 `"Email này đã được sử dụng"` | Email đã thuộc tài khoản khác — đổi email test |
-| Register trả 429 `"Bạn đã yêu cầu quá nhiều lần..."` | Còn cooldown 60 giây, đã gửi 5 mã/giờ cho email đó, hoặc vượt 30 request/giờ/IP (`app.ip-rate-limit`) — chờ rồi thử lại |
 | Register trả 502 `"Không gửi được email xác thực..."` | Brevo sai SMTP key/sender chưa verify; bản nháp được giữ, sửa cấu hình rồi gọi lại |
 | Register trả 400 vì thiếu `email` | Body của bản 1 bước cũ; thêm `email` (bắt buộc từ 2026-11-26) |
 | Confirm/reset trả 400 `"Mã xác thực không đúng hoặc đã hết hạn"` | Mã sai/hết hạn/quá 5 lần hoặc email không có bản nháp — gọi lại Register/Forgot-password để lấy mã mới |

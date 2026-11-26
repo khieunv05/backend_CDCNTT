@@ -82,12 +82,6 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
     }
 
-    /** §5.2 — resend cooldown / hourly quota, only on the register endpoint. */
-    @ExceptionHandler(TooManyRequestsException.class)
-    ResponseEntity<ErrorResponse> handleTooManyRequests(TooManyRequestsException e) {
-        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(new ErrorResponse(e.getMessage()));
-    }
-
     /** §8.2 style: the caller sees one fixed text, the provider error only reaches the log. */
     @ExceptionHandler(EmailDeliveryException.class)
     ResponseEntity<ErrorResponse> handleEmailDelivery(EmailDeliveryException e) {

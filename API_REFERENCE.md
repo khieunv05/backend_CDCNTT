@@ -29,8 +29,7 @@ Tất cả request/response body đều là JSON UTF-8.
 | `{ "message": "Thông tin không hợp lệ", "details": [{ "field", "message" }] }` (`ValidationErrorResponse`) | 400 Bean Validation / tham số không hợp lệ |
 
 Mã lỗi chung: **401** chưa xác thực/sai thông tin đăng nhập, **403** không sở hữu tài nguyên,
-**409** trùng dữ liệu, **429** vượt hạn mức gửi mã (`Bạn đã yêu cầu quá nhiều lần, vui lòng thử lại sau`),
-**502** lỗi dịch vụ AI (`Dịch vụ AI tạm thời không khả dụng`) hoặc lỗi gửi email
+**409** trùng dữ liệu, **502** lỗi dịch vụ AI (`Dịch vụ AI tạm thời không khả dụng`) hoặc lỗi gửi email
 (`Không gửi được email xác thực, vui lòng thử lại`), **500** `Lỗi hệ thống`.
 
 ## 2. Xác thực — `/api/auth`
@@ -55,19 +54,16 @@ Body:
   `password` ≥ 8 ký tự, tối đa 72 byte UTF-8.
 - Endpoint **chưa tạo user**: chỉ ghi bản nháp `pending_registrations` (mật khẩu hash BCrypt,
   mã hash SHA-256) rồi gửi mã 6 chữ số qua email. Tài khoản chỉ xuất hiện sau bước 2.
-- Chính sách mã: 6 chữ số, hết hạn sau **10 phút**, dùng một lần; mã mới huỷ mã cũ;
-  gửi lại = gọi lại chính endpoint này. Cooldown **60 giây**; tối đa **5 mã/giờ/email**.
-- Cùng một email gửi lại sẽ làm mới bản nháp **tại chỗ**, giữ nguyên `send_count`/`window_started_at` để hạn mức 5 mã/giờ không bị reset theo TTL; bản nháp hết hạn do scheduler dọn, không xoá ngay khi gặp.
+- Chính sách mã: 6 chữ số, hết hạn sau **10 phút**, dùng một lần; mã mới huỷ mã cũ.
+  Gửi lại = gọi lại chính endpoint này, không có cooldown hay hạn mức số lần gửi.
+- Cùng một email gửi lại sẽ làm mới bản nháp **tại chỗ** và phát mã mới; bản nháp hết hạn do scheduler dọn, không xoá ngay khi gặp.
 - SMTP lỗi → **502**, **bản nháp được giữ** để caller gọi lại endpoint này.
-- Bộ đếm IP trong bộ nhớ (`app.ip-rate-limit`, mặc định 30 request/giờ/IP) chặn spam qua nhiều mailbox: vượt → **429** cùng message. Đây là lớp phụ; hạn mức 5 mã/giờ/email trong DB mới là chuẩn.
 
 **200** `{ "message": "Mã xác thực đã được gửi tới email" }`
 **400** validation `Thông tin không hợp lệ` + `details[]`
 **409** `{ "message": "Tên đăng nhập đã tồn tại" }` — username thuộc tài khoản khác **hoặc** đang bị
 bản nháp của mailbox khác giữ.
 **409** `{ "message": "Email này đã được sử dụng" }` — email đã thuộc một tài khoản, hoặc bản nháp đang chờ của mailbox khác vừa thắng UNIQUE `uk_pending_registrations_email`.
-**429** `{ "message": "Bạn đã yêu cầu quá nhiều lần, vui lòng thử lại sau" }` — còn trong cooldown
-hoặc vượt 5 mã/giờ.
 **502** `{ "message": "Không gửi được email xác thực, vui lòng thử lại" }` — bản nháp vẫn còn.
 
 ### 2.2. Đăng ký — bước 2: xác thực mã — `POST /api/auth/register/confirm`
@@ -137,10 +133,9 @@ Body:
 { "email": "alice@example.com" }
 ```
 - Luôn trả **200** với đúng một message, dù email có tài khoản hay không (không cho dò tài khoản).
-- Còn trong cooldown **60 giây** hoặc đã dùng đủ **5 mã/giờ/email**: **vẫn 200 im lặng**, không gửi thêm.
+- Không giới hạn tần suất gửi: gọi lại bất cứ lúc nào, mỗi lần phát mã mới và mã cũ mất hiệu lực.
 - SMTP lỗi ở luồng này cũng chỉ ghi log; endpoint **vẫn 200**.
-- Vượt bộ đếm IP (`app.ip-rate-limit`) cũng **vẫn 200** với đúng message đó — không lộ việc bị chặn.
-- Mã: 6 chữ số, hết hạn sau **15 phút**, dùng một lần; mã mới huỷ mã cũ; gửi lại = gọi lại endpoint này.
+- Mã: 6 chữ số, hết hạn sau **15 phút**, dùng một lần.
 
 **200** `{ "message": "Nếu email này đã đăng ký, mã xác thực đã được gửi tới email đó" }`
 **400** validation `Thông tin không hợp lệ` + `details[]` (email sai định dạng).

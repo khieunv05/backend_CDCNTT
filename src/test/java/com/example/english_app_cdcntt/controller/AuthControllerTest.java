@@ -16,7 +16,6 @@ import com.example.english_app_cdcntt.exception.EmailDeliveryException;
 import com.example.english_app_cdcntt.exception.GlobalExceptionHandler;
 import com.example.english_app_cdcntt.exception.InvalidCredentialsException;
 import com.example.english_app_cdcntt.exception.InvalidVerificationCodeException;
-import com.example.english_app_cdcntt.exception.TooManyRequestsException;
 import com.example.english_app_cdcntt.service.AuthService;
 import com.example.english_app_cdcntt.service.PasswordResetService;
 import com.example.english_app_cdcntt.service.RegistrationService;
@@ -119,19 +118,6 @@ class AuthControllerTest {
                         "email", "alice@example.test", "password", "Passw0rd!123")))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.message").value("Email này đã được sử dụng"));
-    }
-
-    @Test
-    @DisplayName("a resend inside the cooldown answers 429 on /register")
-    void registerCooldownAnswersTooManyRequests() throws Exception {
-        doThrow(new TooManyRequestsException()).when(registrationService)
-                .requestRegistration(any(), any(), any(), any());
-
-        mockMvc.perform(postJson("/api/auth/register", Map.of(
-                        "username", "alice", "name", "Alice Nguyen",
-                        "email", "alice@example.test", "password", "Passw0rd!123")))
-                .andExpect(status().isTooManyRequests())
-                .andExpect(jsonPath("$.message").value("Bạn đã yêu cầu quá nhiều lần, vui lòng thử lại sau"));
     }
 
     @Test

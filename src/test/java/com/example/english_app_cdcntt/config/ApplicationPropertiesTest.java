@@ -59,14 +59,7 @@ class ApplicationPropertiesTest {
             OtpProperties otp = context.getBean(OtpProperties.class);
             assertThat(otp.registrationTtl()).isEqualTo(Duration.ofMinutes(10));
             assertThat(otp.resetTtl()).isEqualTo(Duration.ofMinutes(15));
-            assertThat(otp.resendCooldown()).isEqualTo(Duration.ofSeconds(60));
-            assertThat(otp.sendWindow()).isEqualTo(Duration.ofHours(1));
-            assertThat(otp.maxSendsPerWindow()).isEqualTo(5);
             assertThat(otp.maxAttempts()).isEqualTo(5);
-            IpRateLimitProperties ipRateLimit = context.getBean(IpRateLimitProperties.class);
-            assertThat(ipRateLimit.enabled()).isTrue();
-            assertThat(ipRateLimit.maxRequests()).isEqualTo(30);
-            assertThat(ipRateLimit.window()).isEqualTo(Duration.ofHours(1));
             assertThat(context.getBean(MailProperties.class).from()).isEqualTo("no-reply@example.test");
             assertThat(context).hasSingleBean(Clock.class);
             assertThat(context.getBean(Clock.class).getZone()).isEqualTo(ZoneOffset.UTC);
@@ -92,9 +85,7 @@ class ApplicationPropertiesTest {
             "app.cleanup.cron=invalid", "app.cleanup.zone=invalid-zone",
             "app.mail.from=", "app.mail.from=not-an-email",
             "app.otp.registration-ttl=0s", "app.otp.reset-ttl=-1m",
-            "app.otp.send-window=0s", "app.otp.max-sends-per-window=0",
-            "app.otp.max-attempts=0",
-            "app.ip-rate-limit.max-requests=0", "app.ip-rate-limit.window=0s"
+            "app.otp.max-attempts=0"
     })
     void binding_withInvalidSetting_shouldFailStartup(String setting) {
         validRunner().withPropertyValues(setting).run(context -> assertThat(context).hasFailed());

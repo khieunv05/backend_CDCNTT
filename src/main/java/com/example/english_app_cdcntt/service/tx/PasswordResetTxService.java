@@ -46,22 +46,17 @@ public class PasswordResetTxService {
     }
 
     /**
-     * Issues (or replaces) the single live code of an account. Cooldown and hourly quota answer
-     * {@link PasswordResetRequestResult.Suppressed} instead of 429, keeping the endpoint silent.
+     * Issues (or replaces) the single live code of an account. Re-requesting immediately simply
+     * replaces the code, keeping the endpoint silent either way.
      */
     @Transactional
-    public PasswordResetRequestResult requestReset(Long userId) {
+    public VerificationTicket requestReset(Long userId) {
         Instant now = clock.instant();
         User user = userRepository.findById(userId).orElseThrow(InvalidCredentialsException::new);
 
         // Same rule as registration: refresh the expired row instead of delete-then-create, because
-        // the INSERT of a delete/insert pair reaches MySQL before the DELETE is flushed. Keeping the
-        // row also preserves the hourly quota across the 15-minute TTL.
+        // the INSERT of a delete/insert pair reaches MySQL before the DELETE is flushed.
         PasswordResetCode current = passwordResetCodeRepository.findByUser_Id(userId).orElse(null);
-        if (current != null && (!current.isResendAllowed(now, otpProperties.resendCooldown())
-                || current.isSendQuotaExceeded(now, otpProperties.sendWindow(), otpProperties.maxSendsPerWindow()))) {
-            return new PasswordResetRequestResult.Suppressed();
-        }
 
         String code = oneTimeCodes.issue();
         String codeHash = oneTimeCodes.hash(code);
@@ -70,11 +65,11 @@ public class PasswordResetTxService {
         if (current == null) {
             saved = PasswordResetCode.create(user, codeHash, expiresAt, now);
         } else {
-            current.refresh(codeHash, expiresAt, now, otpProperties.sendWindow());
+            current.refresh(codeHash, expiresAt);
             saved = current;
         }
         passwordResetCodeRepository.save(saved);
-        return new PasswordResetRequestResult.Issued(new VerificationTicket(user.getEmail(), code));
+        return new VerificationTicket(user.getEmail(), code);
     }
 
     /**

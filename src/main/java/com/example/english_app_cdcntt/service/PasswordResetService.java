@@ -4,8 +4,8 @@ package com.example.english_app_cdcntt.service;
 public interface PasswordResetService {
 
     /**
-     * Always answers success: an unknown email, a resend inside the cooldown and a mail failure
-     * all look the same from the outside, so the endpoint cannot be used to probe registrations.
+     * Always answers success: an unknown email and a mail failure look the same from the outside,
+     * so the endpoint cannot be used to probe registrations.
      */
     void requestReset(String email);
 

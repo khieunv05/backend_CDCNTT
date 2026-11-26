@@ -11,8 +11,8 @@ import org.springframework.stereotype.Component;
 /**
  * Issues and verifies the six-digit codes mailed to users. Only the SHA-256 hash is stored, so a
  * database dump never contains the plaintext code. Hashing alone cannot make a six-digit space
- * unguessable; the TTL, the five-attempt limit and the per-email/per-IP rate limits are what make
- * brute force impractical, and they must stay in place if this class changes.
+ * unguessable; the TTL and the five-attempt limit are what make brute force impractical, and they
+ * must stay in place if this class changes.
  */
 @Component
 public class OneTimeCodes {

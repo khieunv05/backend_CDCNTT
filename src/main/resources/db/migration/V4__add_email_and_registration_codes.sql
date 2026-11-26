@@ -28,16 +28,12 @@ CREATE TABLE pending_registrations (
     code_hash VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     expires_at DATETIME(6) NOT NULL,
     attempts INT NOT NULL DEFAULT 0,
-    send_count INT NOT NULL DEFAULT 0,
-    window_started_at DATETIME(6) NOT NULL,
-    last_sent_at DATETIME(6) NOT NULL,
     created_at DATETIME(6) NOT NULL,
     PRIMARY KEY (id),
     CONSTRAINT uk_pending_registrations_email UNIQUE (email),
     CONSTRAINT uk_pending_registrations_username UNIQUE (username),
     INDEX idx_pending_registrations_expires (expires_at),
-    CONSTRAINT ck_pending_registrations_attempts CHECK (attempts >= 0),
-    CONSTRAINT ck_pending_registrations_send_count CHECK (send_count >= 0)
+    CONSTRAINT ck_pending_registrations_attempts CHECK (attempts >= 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE password_reset_codes (
@@ -46,14 +42,10 @@ CREATE TABLE password_reset_codes (
     code_hash VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     expires_at DATETIME(6) NOT NULL,
     attempts INT NOT NULL DEFAULT 0,
-    send_count INT NOT NULL DEFAULT 0,
-    window_started_at DATETIME(6) NOT NULL,
-    last_sent_at DATETIME(6) NOT NULL,
     created_at DATETIME(6) NOT NULL,
     PRIMARY KEY (id),
     CONSTRAINT uk_password_reset_codes_user UNIQUE (user_id),
     INDEX idx_password_reset_codes_expires (expires_at),
     CONSTRAINT fk_password_reset_codes_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
-    CONSTRAINT ck_password_reset_codes_attempts CHECK (attempts >= 0),
-    CONSTRAINT ck_password_reset_codes_send_count CHECK (send_count >= 0)
+    CONSTRAINT ck_password_reset_codes_attempts CHECK (attempts >= 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

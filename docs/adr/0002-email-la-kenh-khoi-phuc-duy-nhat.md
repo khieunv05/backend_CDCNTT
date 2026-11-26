@@ -5,7 +5,7 @@
 ## Consequences
 
 - Người dùng quên mất email đã đăng ký thì mất đường khôi phục; tài liệu dành cho client ghi rõ trường hợp này chỉ còn cách liên hệ hỗ trợ. Đây là cái giá đã được chấp nhận, không phải thiếu sót cần "sửa" bằng cách thêm username vào form.
-- `POST /api/auth/forgot-password` luôn trả 200 với cùng một câu, kể cả khi vượt hạn mức gửi, để không ai dùng endpoint này dò xem email nào đã đăng ký.
+- `POST /api/auth/forgot-password` luôn trả 200 với cùng một câu, kể cả khi email không tồn tại hay SMTP lỗi, để không ai dùng endpoint này dò xem email nào đã đăng ký.
 - `users.email` trở thành cột bắt buộc và duy nhất (so sánh không phân biệt hoa thường), trong khi `username` vẫn phân biệt hoa thường như trước.
 - Khôi phục xong phải thu hồi toàn bộ `Phiên` và không trả token: client tự gọi `/login` lại bằng mật khẩu mới.
 

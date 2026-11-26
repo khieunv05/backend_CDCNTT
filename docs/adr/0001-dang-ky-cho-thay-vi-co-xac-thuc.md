@@ -5,7 +5,7 @@
 ## Consequences
 
 - Ràng buộc duy nhất của `Tên đăng nhập` và `Email tài khoản` phải được kiểm tra ở cả hai bảng; xung đột với bản nháp của hộp thư khác trả 409 ngay ở bước 1 thay vì sau khi người dùng gõ mã.
-- Bản nháp chứa BCrypt hash của mật khẩu, nên vòng đời của nó bị buộc vào vòng đời của `Mã xác thực` (10 phút) — không có bản nháp sống lâu hơn mã. Gửi lại làm mới bản nháp tại chỗ thay vì xoá rồi tạo lại: nhờ vậy `send_count`/`window_started_at` sống qua TTL và hạn mức 5 mã/giờ không bị reset.
+- Bản nháp chứa BCrypt hash của mật khẩu, nên vòng đời của nó bị buộc vào vòng đời của `Mã xác thực` (10 phút) — không có bản nháp sống lâu hơn mã. Gửi lại làm mới bản nháp tại chỗ thay vì xoá rồi tạo lại, để không phải chịu lỗi UNIQUE do INSERT chạy ngay khi persist còn DELETE chỉ chạy lúc flush.
 - `POST /api/auth/register` đổi từ tạo tài khoản ngay sang gửi mã: đây là breaking change có chủ ý với client cũ.
 - Chấp nhận lộ thông tin ở bước 1 (409 khi username/email đã tồn tại) để người dùng biết ngay mình không thể dùng giá trị đó; chỉ luồng khôi phục mật khẩu mới trả lời mù.
 

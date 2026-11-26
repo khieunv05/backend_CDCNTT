@@ -9,9 +9,9 @@ import com.example.english_app_cdcntt.service.EmailAddresses;
 import com.example.english_app_cdcntt.service.EmailPurpose;
 import com.example.english_app_cdcntt.service.EmailSender;
 import com.example.english_app_cdcntt.service.PasswordResetService;
-import com.example.english_app_cdcntt.service.tx.PasswordResetRequestResult;
 import com.example.english_app_cdcntt.service.tx.PasswordResetResult;
 import com.example.english_app_cdcntt.service.tx.PasswordResetTxService;
+import com.example.english_app_cdcntt.service.tx.VerificationTicket;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,8 +19,8 @@ import org.springframework.stereotype.Service;
 
 /**
  * Coordinator of the two recovery endpoints. Both are enumeration-safe: request always reports
- * success (unknown email, cooldown, quota and even a broken mail provider), and reset answers the
- * same 400 for "no such email" as for a wrong code.
+ * success (unknown email and even a broken mail provider), and reset answers the same 400 for
+ * "no such email" as for a wrong code.
  */
 @Service
 public class PasswordResetServiceImpl implements PasswordResetService {
@@ -44,15 +44,12 @@ public class PasswordResetServiceImpl implements PasswordResetService {
         if (account.isEmpty()) {
             return;
         }
-        PasswordResetRequestResult result = passwordResetTxService.requestReset(account.get().getId());
-        if (result instanceof PasswordResetRequestResult.Issued issued) {
-            try {
-                emailSender.sendVerificationCode(issued.ticket().email(), issued.ticket().code(),
-                        EmailPurpose.PASSWORD_RESET);
-            } catch (EmailDeliveryException e) {
-                // §5.2 — answering 502 here would confirm the email exists, so the failure stays a log.
-                log.warn("Không gửi được mã đặt lại mật khẩu (userId={})", account.get().getId(), e);
-            }
+        VerificationTicket ticket = passwordResetTxService.requestReset(account.get().getId());
+        try {
+            emailSender.sendVerificationCode(ticket.email(), ticket.code(), EmailPurpose.PASSWORD_RESET);
+        } catch (EmailDeliveryException e) {
+            // §5.2 — answering 502 here would confirm the email exists, so the failure stays a log.
+            log.warn("Không gửi được mã đặt lại mật khẩu (userId={})", account.get().getId(), e);
         }
     }
 

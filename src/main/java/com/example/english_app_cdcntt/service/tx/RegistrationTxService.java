@@ -5,7 +5,6 @@ import com.example.english_app_cdcntt.entity.PendingRegistration;
 import com.example.english_app_cdcntt.entity.User;
 import com.example.english_app_cdcntt.exception.DuplicateEmailException;
 import com.example.english_app_cdcntt.exception.DuplicateUsernameException;
-import com.example.english_app_cdcntt.exception.TooManyRequestsException;
 import com.example.english_app_cdcntt.repository.PendingRegistrationRepository;
 import com.example.english_app_cdcntt.repository.UserRepository;
 import com.example.english_app_cdcntt.service.OneTimeCodes;
@@ -64,12 +63,9 @@ public class RegistrationTxService {
 
         // An expired draft is refreshed in place, never deleted. With IDENTITY ids Hibernate runs the
         // INSERT at persist() time and queues the DELETE for flush, so delete-then-create would hit
-        // UNIQUE(email) as a DataIntegrityViolationException (500). Reusing the row also keeps the
-        // hourly send quota across TTLs, which is what "5 codes per hour per email" means.
+        // UNIQUE(email) as a DataIntegrityViolationException (500). Re-requesting simply replaces the
+        // code; the demo has no resend cooldown or hourly send quota.
         PendingRegistration draft = pendingRegistrationRepository.findByEmail(email).orElse(null);
-        if (draft != null) {
-            requireResendAllowed(draft, now);
-        }
 
         String code = oneTimeCodes.issue();
         String codeHash = oneTimeCodes.hash(code);
@@ -79,8 +75,7 @@ public class RegistrationTxService {
             saved = PendingRegistration.create(username, name, email, passwordEncoder.encode(rawPassword),
                     codeHash, expiresAt, now);
         } else {
-            draft.refresh(username, name, passwordEncoder.encode(rawPassword), codeHash, expiresAt, now,
-                    otpProperties.sendWindow());
+            draft.refresh(username, name, passwordEncoder.encode(rawPassword), codeHash, expiresAt);
             saved = draft;
         }
         pendingRegistrationRepository.save(saved);
@@ -121,13 +116,5 @@ public class RegistrationTxService {
                 .ifPresent(draft -> {
                     throw new DuplicateUsernameException();
                 });
-    }
-
-    private void requireResendAllowed(PendingRegistration draft, Instant now) {
-        // 429 is safe here: the register endpoint already reveals whether an email exists (409).
-        if (!draft.isResendAllowed(now, otpProperties.resendCooldown())
-                || draft.isSendQuotaExceeded(now, otpProperties.sendWindow(), otpProperties.maxSendsPerWindow())) {
-            throw new TooManyRequestsException();
-        }
     }
 }

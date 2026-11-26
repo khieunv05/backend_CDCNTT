@@ -15,7 +15,6 @@ import com.example.english_app_cdcntt.exception.PasswordReuseException;
 import com.example.english_app_cdcntt.repository.UserRepository;
 import com.example.english_app_cdcntt.service.EmailPurpose;
 import com.example.english_app_cdcntt.service.EmailSender;
-import com.example.english_app_cdcntt.service.tx.PasswordResetRequestResult;
 import com.example.english_app_cdcntt.service.tx.PasswordResetResult;
 import com.example.english_app_cdcntt.service.tx.PasswordResetTxService;
 import com.example.english_app_cdcntt.service.tx.VerificationTicket;
@@ -56,8 +55,7 @@ class PasswordResetServiceImplTest {
     @DisplayName("an issued code is mailed to the account address with the reset purpose")
     void requestReset_issued_sendsResetMail() {
         when(userRepository.findByEmail("alice@example.test")).thenReturn(Optional.of(ACCOUNT));
-        when(passwordResetTxService.requestReset(any()))
-                .thenReturn(new PasswordResetRequestResult.Issued(TICKET));
+        when(passwordResetTxService.requestReset(any())).thenReturn(TICKET);
 
         service.requestReset("Alice@Example.Test");
 
@@ -65,23 +63,10 @@ class PasswordResetServiceImplTest {
     }
 
     @Test
-    @DisplayName("a suppressed request (cooldown or quota) sends no mail")
-    void requestReset_suppressed_sendsNothing() {
-        when(userRepository.findByEmail("alice@example.test")).thenReturn(Optional.of(ACCOUNT));
-        when(passwordResetTxService.requestReset(any()))
-                .thenReturn(new PasswordResetRequestResult.Suppressed());
-
-        service.requestReset("alice@example.test");
-
-        verifyNoInteractions(emailSender);
-    }
-
-    @Test
     @DisplayName("a broken mail provider must not turn forgot-password into a 502")
     void requestReset_mailFailure_isSwallowed() {
         when(userRepository.findByEmail("alice@example.test")).thenReturn(Optional.of(ACCOUNT));
-        when(passwordResetTxService.requestReset(any()))
-                .thenReturn(new PasswordResetRequestResult.Issued(TICKET));
+        when(passwordResetTxService.requestReset(any())).thenReturn(TICKET);
         doThrow(new EmailDeliveryException(new IllegalStateException("smtp down"))).when(emailSender)
                 .sendVerificationCode(any(), any(), any());
 

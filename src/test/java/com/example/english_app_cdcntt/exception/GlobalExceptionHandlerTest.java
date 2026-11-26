@@ -282,16 +282,6 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
-    @DisplayName("the resend cooldown answers 429 on the register endpoint")
-    void tooManyRequestsAnswersTooManyRequests() {
-        ResponseEntity<ErrorResponse> response = handler.handleTooManyRequests(new TooManyRequestsException());
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
-        assertThat(response.getBody())
-                .isEqualTo(new ErrorResponse("Bạn đã yêu cầu quá nhiều lần, vui lòng thử lại sau"));
-    }
-
-    @Test
     @DisplayName("a mail provider failure answers 502 without leaking the provider error")
     void emailDeliveryAnswersBadGateway() {
         ResponseEntity<ErrorResponse> response =

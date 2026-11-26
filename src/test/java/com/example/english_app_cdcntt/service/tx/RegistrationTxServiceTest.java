@@ -12,7 +12,6 @@ import com.example.english_app_cdcntt.entity.PendingRegistration;
 import com.example.english_app_cdcntt.entity.User;
 import com.example.english_app_cdcntt.exception.DuplicateEmailException;
 import com.example.english_app_cdcntt.exception.DuplicateUsernameException;
-import com.example.english_app_cdcntt.exception.TooManyRequestsException;
 import com.example.english_app_cdcntt.repository.PendingRegistrationRepository;
 import com.example.english_app_cdcntt.repository.UserRepository;
 import com.example.english_app_cdcntt.service.OneTimeCodes;
@@ -47,8 +46,7 @@ class RegistrationTxServiceTest {
     private static final String RAW_PASSWORD = "raw-secret-password";
     private static final String ENCODED_PASSWORD = "$2a$12$encoded-password-hash";
     private static final Instant NOW = Instant.parse("2026-01-01T00:00:00Z");
-    private static final OtpProperties OTP = new OtpProperties(Duration.ofMinutes(10), Duration.ofMinutes(15),
-            Duration.ofSeconds(60), Duration.ofHours(1), 5, 5);
+    private static final OtpProperties OTP = new OtpProperties(Duration.ofMinutes(10), Duration.ofMinutes(15), 5);
 
     @Mock
     private UserRepository userRepository;
@@ -101,7 +99,6 @@ class RegistrationTxServiceTest {
         assertThat(saved.getCodeHash()).isEqualTo(oneTimeCodes.hash(ticket.code()));
         assertThat(saved.getExpiresAt()).isEqualTo(NOW.plus(Duration.ofMinutes(10)));
         assertThat(saved.getAttempts()).isZero();
-        assertThat(saved.getSendCount()).isEqualTo(1);
     }
 
     @Test
@@ -137,7 +134,7 @@ class RegistrationTxServiceTest {
     }
 
     @Test
-    @DisplayName("an expired draft is refreshed in place: no delete, no insert, quota kept")
+    @DisplayName("an expired draft is refreshed in place: no delete and no insert")
     void createPendingRegistration_expiredDraft_refreshesRowInPlace() {
         PendingRegistration expired = draft("123456", NOW.minusSeconds(1), 0);
         when(pendingRegistrationRepository.findByEmail(EMAIL)).thenReturn(Optional.of(expired));
@@ -151,19 +148,23 @@ class RegistrationTxServiceTest {
         assertThat(expired.getExpiresAt()).isEqualTo(NOW.plus(Duration.ofMinutes(10)));
         assertThat(expired.getCodeHash()).isEqualTo(oneTimeCodes.hash(ticket.code()));
         assertThat(expired.getAttempts()).isZero();
-        assertThat(expired.getSendCount()).isEqualTo(2); // the hourly window started two minutes ago
     }
 
     @Test
-    @DisplayName("a resend inside the cooldown answers 429 and saves nothing")
-    void createPendingRegistration_insideCooldown_rejects() {
+    @DisplayName("a second request refreshes the existing draft in place and mails a new code")
+    void createPendingRegistration_existingDraft_refreshesInPlace() {
         PendingRegistration fresh = PendingRegistration.create(USERNAME, DISPLAY_NAME, EMAIL, ENCODED_PASSWORD,
                 oneTimeCodes.hash("123456"), NOW.plus(Duration.ofMinutes(9)), NOW.minusSeconds(10));
         when(pendingRegistrationRepository.findByEmail(EMAIL)).thenReturn(Optional.of(fresh));
+        when(passwordEncoder.encode(RAW_PASSWORD)).thenReturn(ENCODED_PASSWORD);
 
-        assertThatThrownBy(() -> service.createPendingRegistration(USERNAME, DISPLAY_NAME, EMAIL, RAW_PASSWORD))
-                .isInstanceOf(TooManyRequestsException.class);
-        verify(pendingRegistrationRepository, never()).save(any());
+        VerificationTicket ticket = service.createPendingRegistration(USERNAME, DISPLAY_NAME, EMAIL, RAW_PASSWORD);
+
+        verify(pendingRegistrationRepository, never()).delete(any());
+        verify(pendingRegistrationRepository).save(fresh);
+        assertThat(fresh.getCodeHash()).isEqualTo(oneTimeCodes.hash(ticket.code()));
+        assertThat(fresh.getExpiresAt()).isEqualTo(NOW.plus(Duration.ofMinutes(10)));
+        assertThat(fresh.getAttempts()).isZero();
     }
 
     // ---------- confirm ----------

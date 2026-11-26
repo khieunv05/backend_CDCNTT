@@ -14,7 +14,6 @@ import com.example.english_app_cdcntt.config.UserPrincipal;
 import com.example.english_app_cdcntt.dto.AuthResponse;
 import com.example.english_app_cdcntt.exception.GlobalExceptionHandler;
 import com.example.english_app_cdcntt.service.AuthService;
-import com.example.english_app_cdcntt.service.IpRateLimiter;
 import com.example.english_app_cdcntt.service.PasswordResetService;
 import com.example.english_app_cdcntt.service.RegistrationService;
 import io.jsonwebtoken.MalformedJwtException;
@@ -57,9 +56,6 @@ class AuthControllerSecurityTest {
 
     @MockitoBean
     private PasswordResetService passwordResetService;
-
-    @MockitoBean
-    private IpRateLimiter ipRateLimiter;
 
     @MockitoBean
     private JwtService jwtService;
@@ -111,8 +107,6 @@ class AuthControllerSecurityTest {
     @Test
     @DisplayName("the new registration step 1 is permitAll without a token")
     void registerStartIsReachableWithoutToken() throws Exception {
-        when(ipRateLimiter.tryAcquire(org.mockito.ArgumentMatchers.anyString())).thenReturn(true);
-
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"Alice\",\"username\":\"alice\",\"email\":\"alice@example.test\",\"password\":\"s3cret!x\"}"))
@@ -133,8 +127,6 @@ class AuthControllerSecurityTest {
     @Test
     @DisplayName("forgot-password is permitAll without a token")
     void forgotPasswordIsReachableWithoutToken() throws Exception {
-        when(ipRateLimiter.tryAcquire(org.mockito.ArgumentMatchers.anyString())).thenReturn(true);
-
         mockMvc.perform(post("/api/auth/forgot-password")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"alice@example.test\"}"))

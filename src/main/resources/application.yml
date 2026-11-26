@@ -55,15 +55,7 @@ app:
   otp:
     registration-ttl: 10m
     reset-ttl: 15m
-    resend-cooldown: 60s
-    send-window: 1h
-    max-sends-per-window: 5
     max-attempts: 5
-  ip-rate-limit:
-    # Chặn một máy gọi dồn hai endpoint công khai; quota thật vẫn là send_count theo email.
-    enabled: true
-    max-requests: 30
-    window: 1h
 
 logging:
   level:

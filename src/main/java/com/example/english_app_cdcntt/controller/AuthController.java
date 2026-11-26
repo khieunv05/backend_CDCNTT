@@ -26,8 +26,7 @@ import org.springframework.web.bind.annotation.RestController;
  * The auth endpoints (§4.1): the public session, registration and recovery POSTs, plus the
  * authenticated {@code change-password} route (matched by {@code /api/**}). Error bodies come from
  * {@code GlobalExceptionHandler}; this class only defines the success shapes and the hardcoded
- * messages of the contract. Per-IP throttling lives in {@code IpRateLimitFilter}, so every method
- * here calls exactly one service method.
+ * messages of the contract, and every method here calls exactly one service method.
  */
 @RestController
 @RequestMapping("/api/auth")

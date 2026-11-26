@@ -9,7 +9,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
 import lombok.AccessLevel;
@@ -49,15 +48,6 @@ public class PasswordResetCode {
     @Column(name = "attempts", nullable = false)
     private int attempts;
 
-    @Column(name = "send_count", nullable = false)
-    private int sendCount;
-
-    @Column(name = "window_started_at", nullable = false)
-    private Instant windowStartedAt;
-
-    @Column(name = "last_sent_at", nullable = false)
-    private Instant lastSentAt;
-
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -67,36 +57,18 @@ public class PasswordResetCode {
         code.codeHash = Objects.requireNonNull(codeHash, "codeHash");
         code.expiresAt = Objects.requireNonNull(expiresAt, "expiresAt");
         code.attempts = 0;
-        code.sendCount = 1;
-        code.windowStartedAt = Objects.requireNonNull(now, "now");
-        code.lastSentAt = now;
-        code.createdAt = now;
+        code.createdAt = Objects.requireNonNull(now, "now");
         return code;
     }
 
-    public void refresh(String codeHash, Instant expiresAt, Instant now, Duration sendWindow) {
+    public void refresh(String codeHash, Instant expiresAt) {
         this.codeHash = Objects.requireNonNull(codeHash, "codeHash");
         this.expiresAt = Objects.requireNonNull(expiresAt, "expiresAt");
         this.attempts = 0;
-        this.lastSentAt = Objects.requireNonNull(now, "now");
-        if (now.isBefore(windowStartedAt.plus(sendWindow))) {
-            this.sendCount = this.sendCount + 1;
-        } else {
-            this.sendCount = 1;
-            this.windowStartedAt = now;
-        }
     }
 
     public boolean isExpired(Instant now) {
         return !expiresAt.isAfter(Objects.requireNonNull(now, "now"));
-    }
-
-    public boolean isSendQuotaExceeded(Instant now, Duration window, int maxSends) {
-        return now.isBefore(windowStartedAt.plus(window)) && sendCount >= maxSends;
-    }
-
-    public boolean isResendAllowed(Instant now, Duration cooldown) {
-        return !now.isBefore(lastSentAt.plus(cooldown));
     }
 
     public void incrementAttempts() {

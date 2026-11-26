@@ -5,7 +5,7 @@ public interface RegistrationService {
 
     /**
      * §5.2:234 — writes the pending draft and mails the code. Duplicate username/email answer 409,
-     * a resend inside the cooldown answers 429, and a mail failure answers 502 while the draft stays.
+     * and a mail failure answers 502 while the draft stays. Re-requesting replaces the code.
      */
     void requestRegistration(String username, String name, String email, String rawPassword);
 

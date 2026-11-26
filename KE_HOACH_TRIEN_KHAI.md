@@ -128,8 +128,6 @@ pending_registrations(
   email VARCHAR(254) COLLATE utf8mb4_0900_ai_ci NOT NULL,
   password VARCHAR(60) NOT NULL, code_hash VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
   expires_at DATETIME(6) NOT NULL, attempts INT NOT NULL DEFAULT 0 CHECK(attempts >= 0),
-  send_count INT NOT NULL DEFAULT 0 CHECK(send_count >= 0),
-  window_started_at DATETIME(6) NOT NULL, last_sent_at DATETIME(6) NOT NULL,
   created_at DATETIME(6) NOT NULL,
   UNIQUE(username), UNIQUE(email), INDEX(expires_at)
 )
@@ -138,8 +136,6 @@ password_reset_codes(
   id BIGINT PK, user_id BIGINT FK→users NOT NULL ON DELETE CASCADE,
   code_hash VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
   expires_at DATETIME(6) NOT NULL, attempts INT NOT NULL DEFAULT 0 CHECK(attempts >= 0),
-  send_count INT NOT NULL DEFAULT 0 CHECK(send_count >= 0),
-  window_started_at DATETIME(6) NOT NULL, last_sent_at DATETIME(6) NOT NULL,
   created_at DATETIME(6) NOT NULL,
   UNIQUE(user_id), INDEX(expires_at)
 )
@@ -152,7 +148,7 @@ password_reset_codes(
 - Word có 1–20 nghĩa; AI sinh 1–3 nghĩa. Các trường chuỗi trong form/result không vượt kích thước cột tương ứng.
 - Tạo index `(user_id, next_review)` trên words, `expiry_date` trên refresh_tokens, FK index trên các bảng con và `phrases.user_id`.
 - Không tạo index trùng với index do UNIQUE/FK đã cung cấp; UNIQUE `(user_id, english)` đã hỗ trợ truy vấn theo `user_id`.
-- `pending_registrations` là **bản nháp đăng ký**, không phải tài khoản: mật khẩu hash BCrypt, mã hash SHA-256, TTL 10 phút, cooldown 60 giây, tối đa 5 mã/giờ, sai 5 lần thì xoá; bản ghi chỉ tồn tại đến khi mã được chấp nhận hoặc hết hạn.
+- `pending_registrations` là **bản nháp đăng ký**, không phải tài khoản: mật khẩu hash BCrypt, mã hash SHA-256, TTL 10 phút, sai 5 lần thì xoá; bản ghi chỉ tồn tại đến khi mã được chấp nhận hoặc hết hạn. Gửi lại làm mới bản nháp tại chỗ và phát mã mới, không có cooldown/hạn mức.
 - `password_reset_codes` giữ **một row/tài khoản** (UNIQUE `user_id`), mã hash SHA-256, TTL 15 phút; FK `ON DELETE CASCADE` để xoá tài khoản là xoá luôn mã.
 - V4 backfill `users.email` cho tài khoản cũ bằng placeholder không gửi được thư `legacy+<id>@legacy.invalid` rồi mới đặt `NOT NULL`; các tài khoản này cần cập nhật email thật trước khi dùng khôi phục mật khẩu.
 
@@ -250,7 +246,7 @@ Ví dụ response tạo từ:
 
 | # | Endpoint | Thành công | Lỗi nghiệp vụ chính |
 |---|---|---|---|
-| 1 | POST `/api/auth/register` — bước 1 | 200 MessageResponse: `Mã xác thực đã được gửi tới email` — **chưa tạo tài khoản** | 400 validation; 409 `Tên đăng nhập đã tồn tại` (kể cả khi bị bản nháp của mailbox khác giữ); 409 `Email này đã được sử dụng`; 429 `Bạn đã yêu cầu quá nhiều lần, vui lòng thử lại sau`; 502 `Không gửi được email xác thực, vui lòng thử lại` |
+| 1 | POST `/api/auth/register` — bước 1 | 200 MessageResponse: `Mã xác thực đã được gửi tới email` — **chưa tạo tài khoản** | 400 validation; 409 `Tên đăng nhập đã tồn tại` (kể cả khi bị bản nháp của mailbox khác giữ); 409 `Email này đã được sử dụng`; 502 `Không gửi được email xác thực, vui lòng thử lại` |
 | 2 | POST `/api/auth/login` | 200 AuthResponse | 401 `Đăng nhập thất bại` |
 | 3 | POST `/api/auth/logout` | 200 `Đăng xuất thành công` | 400 request không hợp lệ |
 | 4 | POST `/api/auth/refresh` | 200 AuthResponse mới | 401 `Đăng nhập thất bại` hoặc `Phiên đăng nhập hết hạn` |
@@ -267,7 +263,7 @@ Ví dụ response tạo từ:
 | 15 | POST `/api/words/generate-topic` | 200 SuccessResponse<List<GeneratedWordDto>>: `Đã sinh từ theo chủ đề` — chỉ đề xuất + ghi cache, không đụng sổ (id null) | 400 `Chủ đề không hợp lệ, vui lòng nhập lại`; 502 lỗi AI |
 | 16 | POST `/api/words/generate-topic/confirm` | 201 SuccessResponse<List<WordDto>>: `Thêm từ theo chủ đề thành công` — data là các từ vừa thêm vào sổ | 400 `Từ hoặc cụm từ gửi lên không phải một từ tiếng Anh hợp lệ` |
 | 17 | POST `/api/auth/register/confirm` — bước 2 | 201 MessageResponse: `Tạo tài khoản thành công` | 400 validation; 400 `Mã xác thực không đúng hoặc đã hết hạn` (mã sai/hết hạn/quá 5 lần, cùng message cho mọi trường hợp); 409 `Tên đăng nhập đã tồn tại` hoặc `Email này đã được sử dụng` nếu bị chiếm trong lúc chờ |
-| 18 | POST `/api/auth/forgot-password` | 200 MessageResponse: `Nếu email này đã đăng ký, mã xác thực đã được gửi tới email đó` | Chỉ 400 validation; email không tồn tại, bị cooldown/vượt hạn mức hay SMTP lỗi **vẫn 200 im lặng** |
+| 18 | POST `/api/auth/forgot-password` | 200 MessageResponse: `Nếu email này đã đăng ký, mã xác thực đã được gửi tới email đó` | Chỉ 400 validation; email không tồn tại hay SMTP lỗi **vẫn 200 im lặng** |
 | 19 | POST `/api/auth/reset-password` | 200 MessageResponse: `Đặt lại mật khẩu thành công` — **không trả token**, thu hồi toàn bộ refresh token | 400 validation; 400 `Mã xác thực không đúng hoặc đã hết hạn`; 400 `Mật khẩu mới phải khác mật khẩu hiện tại` (chỉ so sau khi mã hợp lệ) |
 
 Bảng trên liệt kê 19/22 endpoint; `POST /api/auth/change-password`, `GET /api/users/me` và `PUT /api/users/me` có từ trước nhưng không nằm trong bảng này (xem `API_REFERENCE.md` §2).
@@ -288,9 +284,9 @@ Tất cả endpoint protected còn có nhánh 401 chung. Lỗi AI luôn dùng me
 
 ### 5.2. Luồng nghiệp vụ và transaction
 
-- **Register (bước 1):** chuẩn hoá email, kiểm tra username/email đã thuộc tài khoản, rồi ghi **bản nháp** `pending_registrations` (BCrypt password + SHA-256 code, TTL 10 phút) trong một transaction ghi; **sau khi commit** mới gửi mã 6 chữ số qua Brevo (SMTP không nằm trong transaction). Chưa tạo `users`; UNIQUE là lớp chặn cuối (username trùng tài khoản/bản nháp mailbox khác, email trùng tài khoản → 409). SMTP lỗi → 502 nhưng **giữ bản nháp** để gọi lại; cooldown 60 giây hoặc vượt 5 mã/giờ → 429, và bộ đếm IP trong bộ nhớ (`IpRateLimitFilter`, `app.ip-rate-limit`, mặc định 30 request/giờ/IP) cũng trả 429. Nếu deploy sau reverse proxy, bật `ForwardedHeaderFilter` ở tầng triển khai (ứng dụng không tự đăng ký) để `getRemoteAddr()` thấy IP thật, nếu không mọi client dùng chung một xô.
+- **Register (bước 1):** chuẩn hoá email, kiểm tra username/email đã thuộc tài khoản, rồi ghi **bản nháp** `pending_registrations` (BCrypt password + SHA-256 code, TTL 10 phút) trong một transaction ghi; **sau khi commit** mới gửi mã 6 chữ số qua Brevo (SMTP không nằm trong transaction). Chưa tạo `users`; UNIQUE là lớp chặn cuối (username trùng tài khoản/bản nháp mailbox khác, email trùng tài khoản → 409). SMTP lỗi → 502 nhưng **giữ bản nháp** để gọi lại; không có cooldown hay hạn mức gửi mã.
 - **Register-confirm (bước 2):** tìm bản nháp theo email; mã sai/hết hạn/không có bản nháp đều trả **cùng một 400** `Mã xác thực không đúng hoặc đã hết hạn`; sai tăng `attempts`, đủ 5 lần thì xoá bản nháp. Mã đúng → tạo `users` và xoá bản nháp trong **cùng một transaction**; UNIQUE race → 409. Mã dùng một lần, mã mới huỷ mã cũ.
-- **Forgot-password:** email không tồn tại → im lặng; cooldown/vượt hạn mức → im lặng; SMTP lỗi chỉ ghi log. Mọi nhánh đều trả 200 cùng một message (chống dò tài khoản), kể cả khi vượt bộ đếm IP. Mã TTL 15 phút, một row/tài khoản.
+- **Forgot-password:** email không tồn tại → im lặng; SMTP lỗi chỉ ghi log. Mọi nhánh đều trả 200 cùng một message (chống dò tài khoản). Mã TTL 15 phút, một row/tài khoản; gửi lại bất cứ lúc nào.
 - **Reset-password:** kiểm tra mã trước; chỉ khi mã hợp lệ mới so mật khẩu mới với hash cũ (trùng → 400 `Mật khẩu mới phải khác mật khẩu hiện tại`) — đảo thứ tự sẽ biến message reuse thành oracle xác nhận email có tài khoản; email không có tài khoản/mã sai/hết hạn → 400 thống nhất. Thành công: đổi hash BCrypt, xoá mã, và **thu hồi toàn bộ refresh token** của tài khoản trong cùng transaction. **Không trả token** — client đăng nhập lại.
 - **Login:** xác thực mật khẩu → phát token → lưu refresh token; chỉ trả thành công sau commit.
 - **JWT:** HS256; claims `sub=username`, `uid=userId`, `type=access|refresh`, `iat`, `exp`, **`jti` ngẫu nhiên mỗi token**. Secret Base64 decode được ít nhất 32 byte; fail startup nếu thiếu/yếu.
@@ -457,7 +453,6 @@ record GradingError(String incorrect, String correction, String explanation) {}
 | DuplicateEmailException | 409 | Email này đã được sử dụng |
 | InvalidVerificationCodeException | 400 | Mã xác thực không đúng hoặc đã hết hạn |
 | PasswordReuseException | 400 | Mật khẩu mới phải khác mật khẩu hiện tại |
-| TooManyRequestsException | 429 | Bạn đã yêu cầu quá nhiều lần, vui lòng thử lại sau |
 | EmailDeliveryException | 502 | Không gửi được email xác thực, vui lòng thử lại |
 | DuplicateWordException | 409 | Từ này đã có trong sổ của bạn |
 | InvalidCredentialsException / refresh không hợp lệ | 401 | Đăng nhập thất bại |
@@ -535,14 +530,7 @@ app:
   otp:
     registration-ttl: 10m
     reset-ttl: 15m
-    resend-cooldown: 60s
-    send-window: 1h
-    max-sends-per-window: 5
     max-attempts: 5
-  ip-rate-limit:
-    enabled: true
-    max-requests: 30
-    window: 1h
   cleanup:
     cron: "0 0 3 * * *"
     zone: UTC
@@ -625,9 +613,9 @@ logging.level.com.example.english_app_cdcntt: INFO
 
 1. Migration `V4__add_email_and_registration_codes.sql`: `users.email` unique (ai_ci), bảng `pending_registrations` (bản nháp, UNIQUE email + username) và `password_reset_codes` (UNIQUE user, FK cascade); backfill email tài khoản cũ bằng placeholder `legacy+<id>@legacy.invalid` rồi mới `NOT NULL`.
 2. Bốn endpoint: `POST /api/auth/register` (bước 1 — 200, chỉ tạo bản nháp + gửi mã), `POST /api/auth/register/confirm` (bước 2 — 201, tạo tài khoản thật), `POST /api/auth/forgot-password` (luôn 200 cùng message), `POST /api/auth/reset-password` (200, **không trả token**, thu hồi toàn bộ refresh token).
-3. Chính sách mã: 6 chữ số, chỉ lưu SHA-256; TTL 10 phút (đăng ký) / 15 phút (reset); cooldown 60 giây; tối đa 5 mã/giờ/email; sai 5 lần huỷ mã; mã dùng một lần, mã mới huỷ mã cũ; gửi lại = gọi lại chính endpoint đó. Đăng nhập vẫn bằng username.
+3. Chính sách mã: 6 chữ số, chỉ lưu SHA-256; TTL 10 phút (đăng ký) / 15 phút (reset); sai 5 lần huỷ mã; mã dùng một lần, mã mới huỷ mã cũ; gửi lại = gọi lại chính endpoint đó, không giới hạn tần suất. Đăng nhập vẫn bằng username.
 4. Gửi mail qua Brevo SMTP với `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM`; `app.otp.*` có default trong `application.yml`; scheduler dọn thêm 2 bảng hết hạn; không log mã.
-5. **DoD:** `./mvnw.cmd -DskipITs test` xanh **380 test** (0 failure/error, 2026-11-26; gồm `RegistrationServiceImplTest` 12, `PasswordResetServiceImplTest` 8, `IpRateLimitFilterTest` 5, `IpRateLimiterTest` 4); integration test cần MySQL local **chưa chạy** trong đợt này. Tài liệu `API_REFERENCE.md`, `POSTMAN_HUONG_DAN.md`, `KE_HOACH_TRIEN_KHAI.md`, `TIEN_DO_TRIEN_KHAI.md` và `README.md`/`.env.example` đã cập nhật.
+5. **DoD:** `./mvnw.cmd -DskipITs test` xanh **363 test** (0 failure/error, 2026-11-26; gồm `RegistrationTxServiceTest` 11, `PasswordResetTxServiceTest` 9, `RegistrationServiceImplTest` 12, `PasswordResetServiceImplTest` 7, `TokenCleanupServiceTest` 2); integration test cần MySQL local **chưa chạy** trong đợt này. Tài liệu `API_REFERENCE.md`, `POSTMAN_HUONG_DAN.md`, `KE_HOACH_TRIEN_KHAI.md`, `TIEN_DO_TRIEN_KHAI.md` và `README.md`/`.env.example` đã cập nhật.
 
 **Ước lượng sơ bộ:** 8–12 ngày làm việc cho một người đã quen stack, cộng dự phòng 20–30% cho tích hợp/provider và xử lý concurrency. Chỉ tính backend; cần hiệu chỉnh sau Phase 0, không coi đây là cam kết tiến độ.
 
@@ -651,7 +639,7 @@ logging.level.com.example.english_app_cdcntt: INFO
 - AI cache-hit không call; validWord false; validPhrase false; thiếu score/null/wrong type/out-of-range; timeout/429/5xx; không có row lỗi hoặc bản ghi mồ côi.
 - Cascade và orphanRemoval; phrase 5000 ký tự, correctedText dài hơn 255; field vượt giới hạn bị từ chối trước ghi DB.
 - Cleanup trước/bằng/sau expiry; protected API thiếu JWT; refresh token không dùng thay access token.
-- Mã đăng ký/reset: đúng/sai/hết hạn/đã dùng; sai 5 lần huỷ mã; mã mới huỷ mã cũ; cooldown 60 giây và hạn mức 5 mã/giờ (register → 429, forgot → 200 im lặng).
+- Mã đăng ký/reset: đúng/sai/hết hạn/đã dùng; sai 5 lần huỷ mã; mã mới huỷ mã cũ; gửi lại bất cứ lúc nào, không cooldown/hạn mức.
 - Register chưa tạo `users` trước confirm; confirm tạo tài khoản + xoá bản nháp trong một transaction; race username/email → 409.
 - Reset mật khẩu: mật khẩu mới trùng cũ → 400 (chỉ so sau khi mã hợp lệ); thành công thu hồi **toàn bộ** refresh token và không trả token; mã/email không tồn tại dùng chung một 400.
 
@@ -688,7 +676,7 @@ logging.level.com.example.english_app_cdcntt: INFO
 - [ ] Automated tests không cần AI thật, client hoặc credentials cá nhân.
 - [ ] Không secret trong source/log; không log nguyên password/token/đoạn văn mặc định.
 - [ ] Mã xác thực chỉ lưu SHA-256 và chỉ nằm trong email: không trả trong response, không log, không ghi vào message lỗi.
-- [ ] `forgot-password` luôn 200 cùng message (kể cả email lạ/rate-limit/SMTP lỗi); `reset-password` không trả token và thu hồi hết refresh token.
+- [ ] `forgot-password` luôn 200 cùng message (kể cả email lạ/SMTP lỗi); `reset-password` không trả token và thu hồi hết refresh token.
 
 ### 14.2. Triển khai backend
 
@@ -697,7 +685,7 @@ logging.level.com.example.english_app_cdcntt: INFO
 - [ ] DB account quyền tối thiểu; tách migration credentials khỏi runtime ở production; kết nối DB ngoài máy dùng TLS phù hợp.
 - [ ] Secret cấp qua môi trường/secret manager; không dùng root rỗng hoặc secret dev; có quy trình đổi JWT secret và thông báo ảnh hưởng phiên đăng nhập.
 - [ ] Health/readiness check tối thiểu (Actuator hoặc endpoint nội bộ); không public chi tiết cấu hình/DB/secrets.
-- [ ] Cấu hình request size/rate limit ở proxy cho auth và AI để hạn chế brute force và chi phí; ghi rõ ngưỡng vận hành, response 413/429 do proxy nằm ngoài bảng lỗi nghiệp vụ.
+- [ ] Cấu hình request size ở proxy cho auth và AI; đồ án không đặt rate limit trong ứng dụng, nếu triển khai thật thì bổ sung ở proxy/ingress.
 - [ ] Log có correlation ID, theo dõi lỗi/độ trễ AI và DB; backup MySQL và thử restore trước khi dùng dữ liệu quan trọng.
 - [ ] Smoke test qua HTTPS trên backend đã deploy; không khởi chạy client để thay thế kiểm thử API.
 

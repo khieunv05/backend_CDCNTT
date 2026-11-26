@@ -6,7 +6,6 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
 import lombok.AccessLevel;
@@ -60,15 +59,6 @@ public class PendingRegistration {
     @Column(name = "attempts", nullable = false)
     private int attempts;
 
-    @Column(name = "send_count", nullable = false)
-    private int sendCount;
-
-    @Column(name = "window_started_at", nullable = false)
-    private Instant windowStartedAt;
-
-    @Column(name = "last_sent_at", nullable = false)
-    private Instant lastSentAt;
-
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -83,10 +73,7 @@ public class PendingRegistration {
         pending.codeHash = Objects.requireNonNull(codeHash, "codeHash");
         pending.expiresAt = Objects.requireNonNull(expiresAt, "expiresAt");
         pending.attempts = 0;
-        pending.sendCount = 1;
-        pending.windowStartedAt = Objects.requireNonNull(now, "now");
-        pending.lastSentAt = now;
-        pending.createdAt = now;
+        pending.createdAt = Objects.requireNonNull(now, "now");
         return pending;
     }
 
@@ -94,34 +81,18 @@ public class PendingRegistration {
      * Overwrites an existing draft with a fresh code and the newest form values. The email owner
      * is the one who decides, so re-registering with the same email always replaces the draft.
      */
-    public void refresh(String username, String name, String password, String codeHash, Instant expiresAt,
-            Instant now, Duration sendWindow) {
+    public void refresh(String username, String name, String password, String codeHash, Instant expiresAt) {
         this.username = Objects.requireNonNull(username, "username");
         this.name = Objects.requireNonNull(name, "name");
         this.password = Objects.requireNonNull(password, "password");
         this.codeHash = Objects.requireNonNull(codeHash, "codeHash");
         this.expiresAt = Objects.requireNonNull(expiresAt, "expiresAt");
         this.attempts = 0;
-        this.lastSentAt = Objects.requireNonNull(now, "now");
-        if (now.isBefore(windowStartedAt.plus(sendWindow))) {
-            this.sendCount = this.sendCount + 1;
-        } else {
-            this.sendCount = 1;
-            this.windowStartedAt = now;
-        }
     }
 
     /** Inclusive like {@code refresh_tokens.expiry_date}: a code expiring exactly now is dead. */
     public boolean isExpired(Instant now) {
         return !expiresAt.isAfter(Objects.requireNonNull(now, "now"));
-    }
-
-    public boolean isSendQuotaExceeded(Instant now, Duration window, int maxSends) {
-        return now.isBefore(windowStartedAt.plus(window)) && sendCount >= maxSends;
-    }
-
-    public boolean isResendAllowed(Instant now, Duration cooldown) {
-        return !now.isBefore(lastSentAt.plus(cooldown));
     }
 
     public void incrementAttempts() {
