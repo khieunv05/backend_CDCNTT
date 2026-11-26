@@ -14,6 +14,8 @@ import com.example.english_app_cdcntt.config.UserPrincipal;
 import com.example.english_app_cdcntt.dto.AuthResponse;
 import com.example.english_app_cdcntt.exception.GlobalExceptionHandler;
 import com.example.english_app_cdcntt.service.AuthService;
+import com.example.english_app_cdcntt.service.PasswordResetService;
+import com.example.english_app_cdcntt.service.RegistrationService;
 import io.jsonwebtoken.MalformedJwtException;
 import java.time.Instant;
 import org.junit.jupiter.api.DisplayName;
@@ -50,6 +52,12 @@ class AuthControllerSecurityTest {
     private AuthService authService;
 
     @MockitoBean
+    private RegistrationService registrationService;
+
+    @MockitoBean
+    private PasswordResetService passwordResetService;
+
+    @MockitoBean
     private JwtService jwtService;
 
     @MockitoBean
@@ -75,6 +83,16 @@ class AuthControllerSecurityTest {
     }
 
     @Test
+    @DisplayName("change-password is protected: no Bearer token answers the entry point 401")
+    void changePasswordWithoutTokenIsUnauthorized() throws Exception {
+        mockMvc.perform(post("/api/auth/change-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentPassword\":\"Old!12345\",\"newPassword\":\"New!12345\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value(INVALID_TOKEN_MESSAGE));
+    }
+
+    @Test
     @DisplayName("permitAll auth endpoint stays reachable without any token")
     void permitAllEndpointIsReachable() throws Exception {
         when(authService.login("alice", "s3cret!x")).thenReturn(new AuthResponse("a.b.c", "r.e.f", 900L));
@@ -84,6 +102,46 @@ class AuthControllerSecurityTest {
                         .content(LOGIN_BODY))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").value("a.b.c"));
+    }
+
+    @Test
+    @DisplayName("the new registration step 1 is permitAll without a token")
+    void registerStartIsReachableWithoutToken() throws Exception {
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Alice\",\"username\":\"alice\",\"email\":\"alice@example.test\",\"password\":\"s3cret!x\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value(AuthController.REGISTER_CODE_SENT_MESSAGE));
+    }
+
+    @Test
+    @DisplayName("registration confirm is permitAll without a token")
+    void registerConfirmIsReachableWithoutToken() throws Exception {
+        mockMvc.perform(post("/api/auth/register/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"alice@example.test\",\"code\":\"123456\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.message").value(AuthController.REGISTER_SUCCESS_MESSAGE));
+    }
+
+    @Test
+    @DisplayName("forgot-password is permitAll without a token")
+    void forgotPasswordIsReachableWithoutToken() throws Exception {
+        mockMvc.perform(post("/api/auth/forgot-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"alice@example.test\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value(AuthController.FORGOT_PASSWORD_MESSAGE));
+    }
+
+    @Test
+    @DisplayName("reset-password is permitAll without a token")
+    void resetPasswordIsReachableWithoutToken() throws Exception {
+        mockMvc.perform(post("/api/auth/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"alice@example.test\",\"code\":\"123456\",\"newPassword\":\"New!12345\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value(AuthController.RESET_PASSWORD_SUCCESS_MESSAGE));
     }
 
     @Test

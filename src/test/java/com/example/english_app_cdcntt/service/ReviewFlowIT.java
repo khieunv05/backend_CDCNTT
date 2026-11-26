@@ -1,5 +1,7 @@
 package com.example.english_app_cdcntt.service;
 
+import com.example.english_app_cdcntt.support.TestUsers;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -47,8 +49,8 @@ class ReviewFlowIT {
 
     @BeforeEach
     void createUsers() {
-        aliceId = userRepository.saveAndFlush(User.create("rev-a-" + RUN_ID, "hash-alice")).getId();
-        bobId = userRepository.saveAndFlush(User.create("rev-b-" + RUN_ID, "hash-bob")).getId();
+        aliceId = userRepository.saveAndFlush(TestUsers.create("rev-a-" + RUN_ID, "rev-a-" + RUN_ID, "hash-alice")).getId();
+        bobId = userRepository.saveAndFlush(TestUsers.create("rev-b-" + RUN_ID, "rev-b-" + RUN_ID, "hash-bob")).getId();
     }
 
     @AfterEach

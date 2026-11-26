@@ -1,19 +1,27 @@
 package com.example.english_app_cdcntt.service.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doThrow;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import java.sql.SQLIntegrityConstraintViolationException;
+import com.example.english_app_cdcntt.dto.AuthResponse;
+import com.example.english_app_cdcntt.entity.User;
+import com.example.english_app_cdcntt.exception.InvalidCredentialsException;
+import com.example.english_app_cdcntt.exception.PasswordReuseException;
+import com.example.english_app_cdcntt.exception.TokenExpiredException;
+import com.example.english_app_cdcntt.exception.WrongPasswordException;
+import com.example.english_app_cdcntt.repository.UserRepository;
+import com.example.english_app_cdcntt.service.tx.PasswordTxService;
+import com.example.english_app_cdcntt.service.tx.RefreshRotationResult;
+import com.example.english_app_cdcntt.service.tx.RefreshTokenTxService;
+import com.example.english_app_cdcntt.support.TestUsers;
 import java.util.Optional;
-
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -22,24 +30,23 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
-import com.example.english_app_cdcntt.dto.AuthResponse;
-import com.example.english_app_cdcntt.entity.User;
-import com.example.english_app_cdcntt.exception.DuplicateUsernameException;
-import com.example.english_app_cdcntt.exception.InvalidCredentialsException;
-import com.example.english_app_cdcntt.exception.TokenExpiredException;
-import com.example.english_app_cdcntt.repository.UserRepository;
-import com.example.english_app_cdcntt.service.tx.RefreshRotationResult;
-import com.example.english_app_cdcntt.service.tx.RefreshTokenTxService;
-import com.example.english_app_cdcntt.service.tx.RegistrationTxService;
-
+/**
+ * The coordinator half of §5.2: verification order (never write before the password checks pass),
+ * the three-way rotation result, and the "throw only after the tx ended" contract. Registration and
+ * recovery are not this class (see {@code RegistrationTxServiceTest} and the reset tests).
+ */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class AuthServiceImplTest {
 
-    private static final String DUPLICATE_USERNAME_MESSAGE = "Tên đăng nhập đã tồn tại";
+    private static final String USERNAME = "alice";
+    private static final String CURRENT = "Passw0rd!123";
+    private static final String NEXT = "NewPassw0rd!456";
+    private static final String ENCODED_CURRENT = "$2a$12$current-hash";
+    private static final String ENCODED_NEXT = "$2a$12$next-hash";
+    private static final AuthResponse PAIR = new AuthResponse("acc.jwt", "ref.jwt", 900L);
 
     @Mock
     private UserRepository userRepository;
@@ -48,180 +55,145 @@ class AuthServiceImplTest {
     private PasswordEncoder passwordEncoder;
 
     @Mock
-    private RegistrationTxService registrationTxService;
-
-    @Mock
     private RefreshTokenTxService refreshTokenTxService;
 
-    private AuthServiceImpl authService;
+    @Mock
+    private PasswordTxService passwordTxService;
+
+    private AuthServiceImpl service;
+    private User user;
 
     @BeforeEach
     void setUp() {
-        authService = new AuthServiceImpl(userRepository, passwordEncoder, registrationTxService, refreshTokenTxService);
+        service = new AuthServiceImpl(userRepository, passwordEncoder, refreshTokenTxService, passwordTxService);
+        user = TestUsers.create(USERNAME, "Alice Nguyen", CURRENT);
+        when(userRepository.findByUsername(USERNAME)).thenReturn(Optional.of(user));
     }
 
-    // ---------------------------------------------------------------- register
+    // ---------- login ----------
 
     @Test
-    @DisplayName("register chuyển tiếp chính xác username và mật khẩu thô tới createUser")
-    void register_delegatesToCreateUserWithExactArguments() {
-        authService.register("alice", "s3cret!");
+    @DisplayName("login verifies the password then returns the pair issued by the tx bean")
+    void loginReturnsIssuedPair() {
+        when(passwordEncoder.matches(CURRENT, user.getPassword())).thenReturn(true);
+        when(refreshTokenTxService.issueSession(user)).thenReturn(PAIR);
 
-        verify(registrationTxService).createUser("alice", "s3cret!");
-        verifyNoInteractions(userRepository, passwordEncoder, refreshTokenTxService);
-    }
-
-    @Test
-    @DisplayName("register không ném ngoại lệ khi createUser thành công")
-    void register_succeedsWhenCreateUserDoesNothing() {
-        assertThatCode(() -> authService.register("alice", "s3cret!"))
-                .doesNotThrowAnyException();
-
-        verify(registrationTxService).createUser("alice", "s3cret!");
-    }
-
-    @Test
-    @DisplayName("register ánh xạ DataIntegrityViolationException có nguyên nhân uk_users_username thành DuplicateUsernameException")
-    void register_mapsDirectSqlConstraintViolationToDuplicateUsername() {
-        SQLIntegrityConstraintViolationException sqlException = new SQLIntegrityConstraintViolationException(
-                "Duplicate entry 'alice' for key 'uk_users_username'");
-        DataIntegrityViolationException original = new DataIntegrityViolationException("insert failed", sqlException);
-        doThrow(original).when(registrationTxService).createUser(anyString(), anyString());
-
-        assertThatThrownBy(() -> authService.register("alice", "s3cret!"))
-                .isInstanceOf(DuplicateUsernameException.class)
-                .hasMessage(DUPLICATE_USERNAME_MESSAGE)
-                .satisfies(thrown -> assertThat(thrown).isNotSameAs(original));
-    }
-
-    @Test
-    @DisplayName("register ánh xạ chuỗi nguyên nhân sâu hơn chứa uk_users_username thành DuplicateUsernameException")
-    void register_mapsDeeperCauseChainToDuplicateUsername() {
-        SQLIntegrityConstraintViolationException sqlException = new SQLIntegrityConstraintViolationException(
-                "Duplicate entry 'alice' for key 'uk_users_username'");
-        RuntimeException middle = new RuntimeException("wrapped", sqlException);
-        DataIntegrityViolationException original = new DataIntegrityViolationException("insert failed", middle);
-        doThrow(original).when(registrationTxService).createUser(anyString(), anyString());
-
-        assertThatThrownBy(() -> authService.register("alice", "s3cret!"))
-                .isInstanceOf(DuplicateUsernameException.class)
-                .hasMessage(DUPLICATE_USERNAME_MESSAGE);
-    }
-
-    @Test
-    @DisplayName("register ném lại DataIntegrityViolationException gốc khi vi phạm khoá khác không phải uk_users_username")
-    void register_rethrowsOriginalWhenConstraintNameDiffers() {
-        SQLIntegrityConstraintViolationException sqlException = new SQLIntegrityConstraintViolationException(
-                "Duplicate entry 'x' for key 'uk_users_email'");
-        DataIntegrityViolationException original = new DataIntegrityViolationException("insert failed", sqlException);
-        doThrow(original).when(registrationTxService).createUser(anyString(), anyString());
-
-        assertThatThrownBy(() -> authService.register("alice", "s3cret!"))
-                .isSameAs(original)
-                .isNotInstanceOf(DuplicateUsernameException.class);
-    }
-
-    @Test
-    @DisplayName("register ném lại DataIntegrityViolationException gốc khi chuỗi nguyên nhân không có SQLIntegrityConstraintViolationException")
-    void register_rethrowsOriginalWhenNoSqlConstraintViolationInChain() {
-        DataIntegrityViolationException original = new DataIntegrityViolationException("insert failed",
-                new RuntimeException("boom"));
-        doThrow(original).when(registrationTxService).createUser(anyString(), anyString());
-
-        assertThatThrownBy(() -> authService.register("alice", "s3cret!"))
-                .isSameAs(original)
-                .isNotInstanceOf(DuplicateUsernameException.class);
-    }
-
-    // ------------------------------------------------------------------- login
-
-    @Test
-    @DisplayName("login trả về đúng AuthResponse từ issueSession khi mật khẩu khớp")
-    void login_returnsSessionIssuedByRefreshTokenService() {
-        User user = User.create("alice", "hash");
-        AuthResponse expected = new AuthResponse("access-token", "refresh-token", 3600L);
-        when(userRepository.findByUsername("alice")).thenReturn(Optional.of(user));
-        when(passwordEncoder.matches("s3cret!", "hash")).thenReturn(true);
-        when(refreshTokenTxService.issueSession(user)).thenReturn(expected);
-
-        AuthResponse actual = authService.login("alice", "s3cret!");
-
-        assertThat(actual).isSameAs(expected);
-        assertThat(actual).isEqualTo(new AuthResponse("access-token", "refresh-token", 3600L));
-        verify(userRepository).findByUsername("alice");
-        verify(passwordEncoder).matches("s3cret!", "hash");
+        assertThat(service.login(USERNAME, CURRENT)).isEqualTo(PAIR);
         verify(refreshTokenTxService).issueSession(user);
     }
 
     @Test
-    @DisplayName("login ném InvalidCredentialsException khi không tìm thấy người dùng")
-    void login_throwsInvalidCredentialsWhenUserNotFound() {
+    @DisplayName("login with an unknown username answers the same 401 and stores nothing")
+    void loginUnknownUserIsRejected() {
         when(userRepository.findByUsername("ghost")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> authService.login("ghost", "s3cret!"))
+        assertThatThrownBy(() -> service.login("ghost", CURRENT))
                 .isInstanceOf(InvalidCredentialsException.class);
-
-        verify(refreshTokenTxService, never()).issueSession(any());
-        verify(passwordEncoder, never()).matches(anyString(), anyString());
+        verifyNoInteractions(refreshTokenTxService);
     }
 
     @Test
-    @DisplayName("login ném InvalidCredentialsException khi mật khẩu không khớp")
-    void login_throwsInvalidCredentialsWhenPasswordDoesNotMatch() {
-        User user = User.create("alice", "hash");
-        when(userRepository.findByUsername("alice")).thenReturn(Optional.of(user));
-        when(passwordEncoder.matches("wrong", "hash")).thenReturn(false);
+    @DisplayName("login with a wrong password answers 401 before any token is written")
+    void loginWrongPasswordIsRejected() {
+        when(passwordEncoder.matches("wrong", user.getPassword())).thenReturn(false);
 
-        assertThatThrownBy(() -> authService.login("alice", "wrong"))
+        assertThatThrownBy(() -> service.login(USERNAME, "wrong"))
                 .isInstanceOf(InvalidCredentialsException.class);
-
-        verify(refreshTokenTxService, never()).issueSession(any());
+        verifyNoInteractions(refreshTokenTxService);
     }
 
-    // ----------------------------------------------------------------- refresh
+    // ---------- refresh ----------
 
     @Test
-    @DisplayName("refresh trả về response của kết quả Rotated")
-    void refresh_returnsResponseForRotatedResult() {
-        AuthResponse expected = new AuthResponse("new-access", "new-refresh", 7200L);
-        when(refreshTokenTxService.attemptRotation("presented-token"))
-                .thenReturn(new RefreshRotationResult.Rotated(expected));
+    @DisplayName("refresh returns the rotated pair")
+    void refreshReturnsRotatedPair() {
+        when(refreshTokenTxService.attemptRotation("ref.jwt"))
+                .thenReturn(new RefreshRotationResult.Rotated(PAIR));
 
-        AuthResponse actual = authService.refresh("presented-token");
-
-        assertThat(actual).isSameAs(expected);
-        assertThat(actual).isEqualTo(new AuthResponse("new-access", "new-refresh", 7200L));
-        verify(refreshTokenTxService).attemptRotation("presented-token");
+        assertThat(service.refresh("ref.jwt")).isEqualTo(PAIR);
     }
 
     @Test
-    @DisplayName("refresh ném TokenExpiredException khi kết quả là Expired")
-    void refresh_throwsTokenExpiredForExpiredResult() {
-        when(refreshTokenTxService.attemptRotation("expired-token"))
+    @DisplayName("an expired refresh token answers 401 Phiên đăng nhập hết hạn")
+    void refreshExpiredAnswersTokenExpired() {
+        when(refreshTokenTxService.attemptRotation("old"))
                 .thenReturn(new RefreshRotationResult.Expired());
 
-        assertThatThrownBy(() -> authService.refresh("expired-token"))
+        assertThatThrownBy(() -> service.refresh("old"))
                 .isInstanceOf(TokenExpiredException.class);
     }
 
     @Test
-    @DisplayName("refresh ném InvalidCredentialsException khi kết quả là Invalid")
-    void refresh_throwsInvalidCredentialsForInvalidResult() {
-        when(refreshTokenTxService.attemptRotation("invalid-token"))
+    @DisplayName("an unknown or tampered refresh token answers the generic 401")
+    void refreshInvalidAnswersInvalidCredentials() {
+        when(refreshTokenTxService.attemptRotation("nope"))
                 .thenReturn(new RefreshRotationResult.Invalid());
 
-        assertThatThrownBy(() -> authService.refresh("invalid-token"))
+        assertThatThrownBy(() -> service.refresh("nope"))
                 .isInstanceOf(InvalidCredentialsException.class);
     }
 
-    // ------------------------------------------------------------------ logout
+    // ---------- logout ----------
 
     @Test
-    @DisplayName("logout chuyển tiếp chính xác token tới revoke")
-    void logout_delegatesToRevokeWithExactToken() {
-        authService.logout("presented-token");
+    @DisplayName("logout delegates the exact token string to the revoke transaction")
+    void logoutDelegatesRevoke() {
+        service.logout("ref.jwt");
 
-        verify(refreshTokenTxService).revoke("presented-token");
-        verifyNoInteractions(userRepository, passwordEncoder, registrationTxService);
+        verify(refreshTokenTxService).revoke("ref.jwt");
+    }
+
+    // ---------- change-password ----------
+
+    @Test
+    @DisplayName("change-password encodes the new secret and revokes sessions only after both checks")
+    void changePasswordUpdatesHashAndRevokes() {
+        when(passwordEncoder.matches(CURRENT, user.getPassword())).thenReturn(true);
+        when(passwordEncoder.matches(NEXT, user.getPassword())).thenReturn(false);
+        when(passwordEncoder.encode(NEXT)).thenReturn(ENCODED_NEXT);
+
+        service.changePassword(USERNAME, CURRENT, NEXT);
+
+        verify(passwordTxService).changePasswordAndRevokeSessions(any(), eq(ENCODED_NEXT));
+    }
+
+    @Test
+    @DisplayName("a wrong current password answers 400 and touches no hash")
+    void changePasswordWrongCurrentIsRejected() {
+        when(passwordEncoder.matches("wrong", user.getPassword())).thenReturn(false);
+
+        assertThatThrownBy(() -> service.changePassword(USERNAME, "wrong", NEXT))
+                .isInstanceOf(WrongPasswordException.class);
+        verifyNoInteractions(passwordTxService);
+    }
+
+    @Test
+    @DisplayName("the same password answers 400 instead of re-hashing it")
+    void changePasswordReuseIsRejected() {
+        when(passwordEncoder.matches(anyString(), anyString())).thenReturn(true);
+
+        assertThatThrownBy(() -> service.changePassword(USERNAME, NEXT, NEXT))
+                .isInstanceOf(PasswordReuseException.class);
+        verifyNoInteractions(passwordTxService);
+    }
+
+    @Test
+    @DisplayName("an unknown account answers 401 rather than leaking that the username is gone")
+    void changePasswordUnknownUserIsRejected() {
+        when(userRepository.findByUsername("ghost")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.changePassword("ghost", CURRENT, NEXT))
+                .isInstanceOf(InvalidCredentialsException.class);
+        verifyNoInteractions(passwordTxService);
+    }
+
+    @Test
+    @DisplayName("login never returns a pair when the encoder rejects the secret")
+    void loginNeverIssuesOnPasswordMismatch() {
+        when(passwordEncoder.matches(anyString(), anyString())).thenReturn(false);
+
+        assertThatThrownBy(() -> service.login(USERNAME, CURRENT))
+                .isInstanceOf(InvalidCredentialsException.class);
+        verify(refreshTokenTxService, never()).issueSession(any());
     }
 }

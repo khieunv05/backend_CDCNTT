@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.example.english_app_cdcntt.repository.PasswordResetCodeRepository;
+import com.example.english_app_cdcntt.repository.PendingRegistrationRepository;
 import com.example.english_app_cdcntt.repository.RefreshTokenRepository;
 import java.time.Clock;
 import java.time.Instant;
@@ -16,7 +18,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-/** §9.1/§12 — daily token cleanup: fixed-clock cutoff and removed-count passthrough. */
+/** §9.1/§12 — daily cleanup: fixed-clock cutoff, three tables, removed-count sum. */
 @ExtendWith(MockitoExtension.class)
 class TokenCleanupServiceTest {
 
@@ -25,30 +27,41 @@ class TokenCleanupServiceTest {
     @Mock
     private RefreshTokenRepository refreshTokenRepository;
 
+    @Mock
+    private PendingRegistrationRepository pendingRegistrationRepository;
+
+    @Mock
+    private PasswordResetCodeRepository passwordResetCodeRepository;
+
     private TokenCleanupService tokenCleanupService;
 
     @BeforeEach
     void setUp() {
-        tokenCleanupService = new TokenCleanupService(refreshTokenRepository, Clock.fixed(NOW, ZoneId.of("UTC")));
+        tokenCleanupService = new TokenCleanupService(refreshTokenRepository, pendingRegistrationRepository,
+                passwordResetCodeRepository, Clock.fixed(NOW, ZoneId.of("UTC")));
     }
 
     @Test
-    @DisplayName("cutoff = giờ hiện tại (fix clock); trả về số dòng bị xoá")
+    @DisplayName("cutoff = giờ hiện tại (fix clock); trả về tổng số dòng bị xoá của cả ba bảng")
     void cleanupUsesCurrentTimeAsCutoff() {
         when(refreshTokenRepository.deleteAllExpiredBefore(NOW)).thenReturn(5);
+        when(pendingRegistrationRepository.deleteAllExpiredBefore(NOW)).thenReturn(2);
+        when(passwordResetCodeRepository.deleteAllExpiredBefore(NOW)).thenReturn(1);
 
         int deleted = tokenCleanupService.cleanupExpiredTokens();
 
-        assertThat(deleted).isEqualTo(5);
+        assertThat(deleted).isEqualTo(8);
         verify(refreshTokenRepository).deleteAllExpiredBefore(NOW);
+        verify(pendingRegistrationRepository).deleteAllExpiredBefore(NOW);
+        verify(passwordResetCodeRepository).deleteAllExpiredBefore(NOW);
     }
 
     @Test
-    @DisplayName("không có token hết hạn → 0, không lỗi")
+    @DisplayName("không có dòng hết hạn → 0, không lỗi")
     void cleanupWithNothingExpiredReturnsZero() {
-        when(refreshTokenRepository.deleteAllExpiredBefore(NOW)).thenReturn(0);
-
         assertThat(tokenCleanupService.cleanupExpiredTokens()).isZero();
         verify(refreshTokenRepository).deleteAllExpiredBefore(NOW);
+        verify(pendingRegistrationRepository).deleteAllExpiredBefore(NOW);
+        verify(passwordResetCodeRepository).deleteAllExpiredBefore(NOW);
     }
 }

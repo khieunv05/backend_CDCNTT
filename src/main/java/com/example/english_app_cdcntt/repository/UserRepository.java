@@ -10,4 +10,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByUsername(String username);
 
     boolean existsByUsername(String username);
+
+    /** {@code email} uses the migration's case-insensitive collation; callers still lower-case it. */
+    Optional<User> findByEmail(String email);
+
+    boolean existsByEmail(String email);
 }

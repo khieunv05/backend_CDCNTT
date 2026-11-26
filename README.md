@@ -60,6 +60,7 @@ GRANT ALL PRIVILEGES ON lenglish.* TO 'lenglish_app'@'localhost';
 | `DB_USERNAME` / `DB_PASSWORD` | tài khoản app (không dùng root) |
 | `JWT_SECRET` | Base64 của **≥ 32 byte** ngẫu nhiên (≥ 44 ký tự, §14) |
 | `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL` | endpoint chat-completions tương thích OpenAI; `AI_BASE_URL` phải là **https** tuyệt đối, không userinfo/query/fragment |
+| `MAIL_HOST` / `MAIL_PORT` / `MAIL_USERNAME` / `MAIL_PASSWORD` / `MAIL_FROM` | Brevo SMTP để gửi mã xác thực; `MAIL_FROM` phải là sender đã verify trong Brevo (mẫu trong `.env.example`) |
 
 Dùng Docker thì các biến này nằm trong `.env` (`APP_DB_*`, `MYSQL_HOST_PORT`);
 `. .\scripts\dev-env.ps1` nạp chúng thành `DB_*` cho tiến trình Maven.
@@ -89,7 +90,8 @@ Hai tầng, tách theo §13.8:
 
   `support/MySqlTestConfiguration` tự xác thực các biến trên và hủy chạy nếu sai/missing.
   `ApiEndToEndIT` khởi động toàn bộ app trên port ngẫu nhiên rồi bắn HTTP request theo đúng
-  thứ tự nghiệp vụ (đăng ký → từ → ôn → đoạn văn → logout), stub `AiClient` bằng Mockito.
+  thứ tự nghiệp vụ (đăng ký → xác thực email → đăng nhập → từ → ôn → đoạn văn → quên mật khẩu
+  → đặt lại mật khẩu → logout), stub `AiClient`/SMTP bằng Mockito và `RecordingEmailSender`.
 
 Báo cáo coverage JaCoCo: `target/site/jacoco/index.html` (unit) và
 `target/site/jacoco-it/index.html` (integration).
@@ -102,31 +104,36 @@ src/main/java/com/example/english_app_cdcntt/
                AiProperties, AiClientConfig, CleanupProperties, AppUserDetailsService,
                UserPrincipal, TokenType, RestAuthenticationEntryPoint, RestAccessDeniedHandler,
                SecurityErrorResponses, ApplicationPropertiesConfig, ClockConfig,
-               JpaAuditingConfig, SchedulingConfig, SecretValue
+               JpaAuditingConfig, SchedulingConfig, SecretValue, OtpProperties, MailProperties
   controller/  AuthController, WordController, PhraseController, GlobalErrorController (/error)
   service/     AuthService, WordService, PhraseService, GenerateService, GradingService,
                AiClient (giao diện tích hợp AI), WordCacheTxService, PhraseTxService,
-               TokenCleanupService, SrsIntervals
-               + impl/ (AuthServiceImpl, WordServiceImpl, PhraseServiceImpl,
+               TokenCleanupService, SrsIntervals, RegistrationService, PasswordResetService,
+               EmailSender, EmailPurpose, EmailAddresses, OneTimeCodes
+               + impl/ (AuthServiceImpl, UserServiceImpl, WordServiceImpl, PhraseServiceImpl,
                GenerateServiceImpl, GradingServiceImpl, LlmAiClient,
-               WordCacheTxServiceImpl, PhraseTxServiceImpl)
-               + tx/ (RegistrationTxService, RefreshTokenTxService — transaction biên)
+               WordCacheTxServiceImpl, PhraseTxServiceImpl, RegistrationServiceImpl,
+               PasswordResetServiceImpl, SmtpEmailSender)
+               + tx/ (RegistrationTxService, PasswordResetTxService, RefreshTokenTxService,
+               PasswordTxService — transaction biên)
   repository/  UserRepository, WordRepository, WordValueRepository, WordCacheRepository,
                WordCacheValueRepository, PhraseRepository, GrammarErrorRepository,
-               RefreshTokenRepository
+               RefreshTokenRepository, PendingRegistrationRepository, PasswordResetCodeRepository
   entity/      User, Word, WordValue, WordCache, WordCacheValue, Phrase, GrammarError,
-               RefreshToken
+               RefreshToken, PendingRegistration, PasswordResetCode
   dto/ form/ mapper/ enums/ exception/ (GlobalExceptionHandler, ErrorResponse)
 src/test/java/com/example/english_app_cdcntt/
   unit: *Test          — service/logic thuần
   IT:  *FlowIT, RepositoryLayerIT, ApiEndToEndIT — MySQL thật qua failsafe
-  support/MySqlTestConfiguration — kiểm tra env TEST_DB_*
+  support/MySqlTestConfiguration — kiểm tra env TEST_DB_*; RecordingEmailSender — chặn SMTP,
+           giữ lại mã đã gửi để E2E đọc
 ```
 
 ## 6. Tài liệu liên quan
 
 - [`KE_HOACH_TRIEN_KHAI.md`](KE_HOACH_TRIEN_KHAI.md) — đặc tả gốc 14 mục.
-- [`API_REFERENCE.md`](API_REFERENCE.md) — 14 endpoint: body, response, mã lỗi, ví dụ curl.
+- [`API_REFERENCE.md`](API_REFERENCE.md) — toàn bộ endpoint: body, response, mã lỗi, ví dụ curl.
+- [`docs/adr/`](docs/adr/) — các quyết định kiến trúc đã chốt (đăng ký chờ, email là kênh khôi phục).
 - [`TIEN_DO_TRIEN_KHAI.md`](TIEN_DO_TRIEN_KHAI.md) — nhật ký tiến độ từng đợt.
 - [`HUONG_DAN_TEST_MYSQL.md`](HUONG_DAN_TEST_MYSQL.md) — dựng MySQL cho tầng IT.
 - [`HUONG_DAN_DOCKER.md`](HUONG_DAN_DOCKER.md) — dựng môi trường local bằng Docker Compose.

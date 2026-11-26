@@ -25,7 +25,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class EnglishAppCdcnttApplicationIT {
     private static final LocalDateTime NOW = LocalDateTime.of(2026, 1, 2, 3, 4, 5, 123456000);
     private static final List<String> TABLES = List.of("users", "words", "word_values", "word_cache",
-            "word_cache_values", "phrases", "grammar_errors", "refresh_tokens");
+            "word_cache_values", "phrases", "grammar_errors", "refresh_tokens",
+            "pending_registrations", "password_reset_codes");
 
     @Autowired
     JdbcTemplate jdbc;
@@ -34,7 +35,7 @@ class EnglishAppCdcnttApplicationIT {
     Flyway flyway;
 
     @Test
-    void migration_onDedicatedMySql_shouldHaveV1AndRemainValidOnSecondRun() {
+    void migration_onDedicatedMySql_shouldHaveLatestSchemaAndRemainValidOnSecondRun() {
         // Provision an empty schema for the first run; subsequent runs retain Flyway history.
         assertThat(jdbc.queryForObject("SELECT DATABASE()", String.class)).isEqualTo("lenglish_test");
         assertThat(jdbc.queryForObject("SELECT VERSION()", String.class)).startsWith("8.0.43");
@@ -43,12 +44,12 @@ class EnglishAppCdcnttApplicationIT {
                 SELECT table_name FROM information_schema.tables
                 WHERE table_schema = DATABASE() AND table_name <> 'flyway_schema_history'
                 """, String.class)).containsExactlyInAnyOrderElementsOf(TABLES);
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("1");
+        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("4");
         assertThat(flyway.info().pending()).isEmpty();
         assertThat(flyway.validateWithResult().validationSuccessful).isTrue();
         assertThat(flyway.migrate().migrationsExecuted).isZero();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success = 1",
-                Integer.class)).isEqualTo(1);
+                Integer.class)).isEqualTo(4);
     }
 
     @Test
@@ -62,13 +63,25 @@ class EnglishAppCdcnttApplicationIT {
             assertThat(column(table, "id", "extra")).isEqualTo("auto_increment");
         }
         assertThat(column("users", "username", "collation_name")).isEqualTo("utf8mb4_0900_bin");
+        assertThat(column("users", "email", "collation_name")).isEqualTo("utf8mb4_0900_ai_ci");
         assertThat(column("words", "english", "collation_name")).isEqualTo("utf8mb4_0900_bin");
         assertThat(column("word_cache", "english", "collation_name")).isEqualTo("utf8mb4_0900_bin");
         assertThat(column("refresh_tokens", "token", "collation_name")).isEqualTo("ascii_bin");
         assertThat(column("refresh_tokens", "token", "character_set_name")).isEqualTo("ascii");
+        assertThat(column("pending_registrations", "username", "collation_name")).isEqualTo("utf8mb4_0900_bin");
+        assertThat(column("pending_registrations", "email", "collation_name")).isEqualTo("utf8mb4_0900_ai_ci");
+        assertThat(column("pending_registrations", "code_hash", "collation_name")).isEqualTo("ascii_bin");
+        assertThat(column("password_reset_codes", "code_hash", "collation_name")).isEqualTo("ascii_bin");
         assertLength("users", "username", 50);
         assertLength("users", "password", 60);
+        assertLength("users", "email", 254);
         assertLength("refresh_tokens", "token", 2048);
+        assertLength("pending_registrations", "name", 100);
+        assertLength("pending_registrations", "username", 50);
+        assertLength("pending_registrations", "email", 254);
+        assertLength("pending_registrations", "password", 60);
+        assertLength("pending_registrations", "code_hash", 64);
+        assertLength("password_reset_codes", "code_hash", 64);
         for (String table : List.of("words", "word_cache")) {
             assertLength(table, "english", 255);
             assertLength(table, "level", 2);
@@ -95,10 +108,10 @@ class EnglishAppCdcnttApplicationIT {
         assertThat(jdbc.queryForObject("""
                 SELECT COUNT(*) FROM information_schema.columns
                 WHERE table_schema = DATABASE() AND data_type = 'datetime' AND datetime_precision = 6
-                """, Integer.class)).isEqualTo(9);
+                """, Integer.class)).isEqualTo(13);
         assertThat(column("words", "review_count", "column_default")).isEqualTo("0");
         // Compare every index: also catches accidental duplicate FK indexes.
-        assertIndexes("users", "PRIMARY:id", "uk_users_username:username");
+        assertIndexes("users", "PRIMARY:id", "uk_users_username:username", "uk_users_email:email");
         assertIndexes("words", "PRIMARY:id", "uk_words_user_english:user_id,english",
                 "idx_words_user_next_review:user_id,next_review");
         assertIndexes("word_values", "PRIMARY:id", "idx_word_values_word:word_id");
@@ -108,12 +121,18 @@ class EnglishAppCdcnttApplicationIT {
         assertIndexes("grammar_errors", "PRIMARY:id", "idx_grammar_errors_phrase:phrase_id");
         assertIndexes("refresh_tokens", "PRIMARY:id", "uk_refresh_tokens_token:token",
                 "idx_refresh_tokens_user:user_id", "idx_refresh_tokens_expiry:expiry_date");
+        assertIndexes("pending_registrations", "PRIMARY:id",
+                "uk_pending_registrations_email:email", "uk_pending_registrations_username:username",
+                "idx_pending_registrations_expires:expires_at");
+        assertIndexes("password_reset_codes", "PRIMARY:id", "uk_password_reset_codes_user:user_id",
+                "idx_password_reset_codes_expires:expires_at");
         assertThat(jdbc.queryForList("""
                 SELECT CONCAT(constraint_name, ':', delete_rule) FROM information_schema.referential_constraints
                 WHERE constraint_schema = DATABASE()
                 """, String.class)).containsExactlyInAnyOrder("fk_words_user:RESTRICT",
                 "fk_word_values_word:CASCADE", "fk_word_cache_values_cache:CASCADE",
-                "fk_phrases_user:RESTRICT", "fk_grammar_errors_phrase:CASCADE", "fk_refresh_tokens_user:RESTRICT");
+                "fk_phrases_user:RESTRICT", "fk_grammar_errors_phrase:CASCADE", "fk_refresh_tokens_user:RESTRICT",
+                "fk_password_reset_codes_user:CASCADE");
     }
 
     @Test
@@ -205,7 +224,8 @@ class EnglishAppCdcnttApplicationIT {
     }
 
     private void user(long id, String username) {
-        jdbc.update("INSERT INTO users (id, username, password) VALUES (?, ?, ?)", id, username, "x".repeat(60));
+        jdbc.update("INSERT INTO users (id, username, email, password) VALUES (?, ?, ?, ?)",
+                id, username, "user" + id + "@example.test", "x".repeat(60));
     }
 
     private void word(long id, long userId, String english) {

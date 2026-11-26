@@ -1,5 +1,7 @@
 package com.example.english_app_cdcntt.service.impl;
 
+import com.example.english_app_cdcntt.support.TestUsers;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -87,7 +89,7 @@ class TopicGenerateServiceImplTest {
     private Word ownedWord(String english) {
         // Word's constructor requires a non-null user and nextReview (Objects.requireNonNull) —
         // the exclude list only reads Word::getEnglish, so throwaway values are fine here
-        return Word.create(User.create("alice", "hash"), english, Instant.parse("2026-01-15T08:00:00Z"));
+        return Word.create(TestUsers.create("alice", "alice", "hash"), english, Instant.parse("2026-01-15T08:00:00Z"));
     }
 
     private WordCache cachedWord(String english) {

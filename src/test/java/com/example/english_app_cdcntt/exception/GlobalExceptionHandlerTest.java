@@ -259,4 +259,36 @@ class GlobalExceptionHandlerTest {
             assertThat(((ErrorResponse) response.getBody()).message()).isNotBlank();
         }
     }
+
+    // ---------- email verification and recovery (§5.2) ----------
+
+    @Test
+    @DisplayName("duplicate email answers 409 with its own message, distinct from duplicate username")
+    void duplicateEmailAnswersConflict() {
+        ResponseEntity<ErrorResponse> response = handler.handleDuplicateEmail(new DuplicateEmailException());
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(response.getBody()).isEqualTo(new ErrorResponse("Email này đã được sử dụng"));
+    }
+
+    @Test
+    @DisplayName("a wrong or expired code answers 400 with one message for every failure mode")
+    void invalidVerificationCodeAnswersBadRequest() {
+        ResponseEntity<ErrorResponse> response =
+                handler.handleInvalidCode(new InvalidVerificationCodeException());
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isEqualTo(new ErrorResponse("Mã xác thực không đúng hoặc đã hết hạn"));
+    }
+
+    @Test
+    @DisplayName("a mail provider failure answers 502 without leaking the provider error")
+    void emailDeliveryAnswersBadGateway() {
+        ResponseEntity<ErrorResponse> response =
+                handler.handleEmailDelivery(new EmailDeliveryException(new IllegalStateException("smtp 535")));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
+        assertThat(response.getBody()).isEqualTo(new ErrorResponse("Không gửi được email xác thực, vui lòng thử lại"));
+        assertThat(response.getBody().message()).doesNotContain("535");
+    }
 }

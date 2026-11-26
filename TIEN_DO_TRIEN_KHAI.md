@@ -167,7 +167,7 @@ Kết quả: **BUILD SUCCESS** với 75 unit test + 21 integration test (15 Repo
 - 2.3 Endpoint: `auth/AuthController` với `POST /api/auth/register` (201 + message), `POST /api/auth/login`, `POST /api/auth/logout`, `POST /api/auth/refresh`.
 - 2.4 Rotation/refresh token: `service/RefreshTokenTxService` (`issueSession`, `attemptRotation`, `revoke`) + `service/AuthService` (điều phối, không `@Transactional` để write nằm trong tx bean riêng) + `service/RegistrationTxService`; `RefreshRotationResult` (sealed: `Rotated`/`Expired`/`Invalid`); `RefreshTokenRepository.findByTokenForUpdate` khóa `PESSIMISTIC_WRITE`, `deleteByTokenValue`; rotation xoá token cũ và phát hành cặp mới, token hết hạn bị xoá **trước khi** trả 401 (transaction commit), token đã thu hồi dùng lại → 401.
 - 2.5 Test: 8 file test mới cho Phase 2 — `security/JwtServiceTest` (212 dòng), `security/TokenTypeTest` (57), `service/AuthServiceTest` (224), `service/RefreshTokenTxServiceTest` (337), `service/RegistrationTxServiceTest` (105), `auth/AuthControllerTest` (172, MockMvc standalone + controller advice), `web/GlobalExceptionHandlerTest` (240), phần bổ sung của `config/ApplicationPropertiesTest`.
-- `pom.xml`: thêm property `mockito.agent.jar` và `<argLine>@{argLine} -javaagent:${mockito.agent.jar}</argLine>` cho surefire + failsafe. Lý do: Mockito 5.23 self-attach bằng cách spawn tiến trình ngoài, bị chặn trong môi trường sandbox/JDK 24 (`Mockito is unable to load the plugin ... MockMaker`); nạp sẵn `-javaagent` là cách Mockito khuyến nghị cho JDK 21+ và giữ nguyên `@{argLine}` để không phá jacoco.
+- `pom.xml`: thêm property `mockito.agent.jar` và `<argLine>@{argLine} -javaagent:${mockito.agent.jar}</argLine>` cho surefire + failsafe. Lý do: Mockito 5.23 self-attach bằng cách spawn tiến trình ngoài, bị chặn trong môi trường sandbox/JDK 24 (`Mockito is unable to load the plugin ... MockMaker`); nạp sẵn `-javaagent` là cách Mockito khuyến nghị cho JDK 21+ và giữ nguyên `@{argLine}` để không phá jacoco. Trên máy hiện tại agent vẫn bị chặn self-attach, nên bổ sung `src/test/resources/mockito-extensions/org.mockito.plugins.MockMaker` = `mock-maker-subclass`; đánh đổi: không mock được final class/static method, nhưng toàn bộ test hiện có không cần.
 
 ### Kết quả kiểm tra
 
@@ -411,6 +411,23 @@ Việc còn lại chờ đợt sửa code sau (không đụng trong đợt này)
 2. ~~Xoá phương thức chết `PhraseRepository.findByUser_IdOrderByCreatedAtDesc`~~ — xong: đã xoá khỏi `PhraseRepository` (+ import `Page`/`Pageable`), test `RepositoryLayerIT.phrasePagingOrdersByCreatedAtDesc` đổi thành `phraseCountByUserIsScopedToOwner` (giữ phủ `countByUser_Id`).
 3. (tùy chọn) cập nhật các con số đếm test trong log cũ — file test hiện có nhiều case hơn lúc ghi (257 unit).
 
+## Đợt 16 — Đăng ký xác thực email & khôi phục mật khẩu (2026-11-26)
+
+**Trạng thái: ĐÃ HOÀN THÀNH phần backend (2026-11-26)** — tính năng “đăng ký có xác thực email + quên mật khẩu” đã implement xong; đợt này chỉ cập nhật tài liệu cho khớp code thật (không sửa `.java`/`.xml`/`.sql`, không tạo ADR, không sửa diagram).
+
+- **4 endpoint mới** (`AuthController`): `POST /api/auth/register` (bước 1 — 200 `Mã xác thực đã được gửi tới email`, **chưa tạo tài khoản**, chỉ ghi `pending_registrations` + gửi mã), `POST /api/auth/register/confirm` (201 `Tạo tài khoản thành công`), `POST /api/auth/forgot-password` (luôn 200 `Nếu email này đã đăng ký, mã xác thực đã được gửi tới email đó`), `POST /api/auth/reset-password` (200 `Đặt lại mật khẩu thành công`, **không trả token**). Đây là **breaking change** với `/register` 1 bước cũ: body thêm `email`, không còn trả 201.
+- **Chính sách mã** (`OtpProperties`): 6 chữ số, chỉ lưu SHA-256; TTL 10 phút (đăng ký) / 15 phút (reset); sai 5 lần huỷ mã; mã dùng một lần, mã mới huỷ mã cũ; gửi lại = gọi lại chính endpoint cũ, không cooldown/hạn mức. Đăng nhập vẫn bằng **tên đăng nhập**; email chỉ là kênh khôi phục duy nhất.
+- **Migration `V4__add_email_and_registration_codes.sql`**: `users.email` varchar(254) `utf8mb4_0900_ai_ci` NOT NULL + unique (backfill tài khoản cũ bằng `legacy+<id>@legacy.invalid`), bảng `pending_registrations` (UNIQUE email + username, attempts) và `password_reset_codes` (UNIQUE user, FK cascade). `TokenCleanupService` dọn thêm 2 bảng hết hạn.
+- **Cấu hình**: Brevo SMTP qua `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM`; `app.mail.from` và `app.otp.*` có default trong `application.yml`; dependency `spring-boot-starter-mail`. Chi tiết Brevo (SMTP key, verify sender, SPF/DKIM) ở `README.md` §3.3 và `.env.example`.
+- **Test**: `./mvnw.cmd -B -DskipITs test` — BUILD SUCCESS, **363 unit test**, 0 failures / 0 errors / 0 skipped (gồm `RegistrationTxServiceTest` 11, `PasswordResetTxServiceTest` 9, `RegistrationServiceImplTest` 12, `PasswordResetServiceImplTest` 7, `TokenCleanupServiceTest` 2). Con số tăng qua các lượt sửa (329 → 339 → 345 → 368 → 380), rồi giảm còn 363 sau khi bỏ toàn bộ rate limit/IP và các test tương ứng.
+- **Tài liệu đã cập nhật cùng đợt**: `API_REFERENCE.md` (4 endpoint + đổi `/register` thành 2 bước + luồng ví dụ), `KE_HOACH_TRIEN_KHAI.md` (§1.2/§1.3, §2.2 thêm 2 bảng + `users.email`, §4.1 lên 22 endpoint, §5 auth, §9 cleanup/exception, §10 mail/OTP + V4, §11 Phase 9, §14 checklist), `POSTMAN_HUONG_DAN.md` (§3.4 luồng 6 bước), `TIEN_DO_TRIEN_KHAI.md` (mục này). `README.md` và `.env.example` đã được cập nhật từ trước.
+
+**Việc còn lại (chưa xong trong đợt này):**
+
+1. Chạy **integration test cần MySQL local** (`./mvnw.cmd clean verify`, `TEST_DB_*` theo `HUONG_DAN_TEST_MYSQL.md`) — chưa chạy trong phiên vì thiếu DB; unit test không chứng minh được commit/rollback và unique thật.
+2. Kiểm thử đầu-cuối với **hộp thư Brevo thật**: register → nhận mã → confirm → forgot → reset → login lại; xác nhận sender đã verify và không có mã trong log.
+3. Cập nhật **client Flutter** (repo khác) sang luồng 2 bước + màn hình nhập mã/khôi phục mật khẩu; client cũ gửi body thiếu `email` sẽ nhận 400.
+4. Cập nhật `LEnglish.postman_collection.json` (file JSON vẫn là bản 1 bước, Register mong đợi 201) nếu muốn `Run collection` xanh trở lại.
 ## Các đợt tiếp theo
 
 - [x] **Phase 0.2:** cấu hình application, properties được validate, Clock UTC và unit tests cấu hình.
@@ -422,6 +439,7 @@ Việc còn lại chờ đợt sửa code sau (không đụng trong đợt này)
 - [x] **Phase 5: ĐÃ NGHIỆM THU (2026-10-01)** — grading và phrases; 210 unit + 35 IT (trong đó 3 `PhraseFlowIT` trên MySQL local) 0 lỗi, chạy `clean verify` đầy đủ (mục Đợt 11). Nghiệm thu kèm một lỗi thật do IT phát hiện: `PhraseTxServiceImpl.save` từng đọc `score` khi `validPhrase=false` (NPE) — đã thêm guard 400 ở ranh giới tx; 1 lỗi assertion IT sửa cùng lượt.
 - [x] **Phase 6: ĐÃ NGHIỆM THU (2026-10-02)** — review SRS và cleanup. 227 unit + 38 IT (MySQL) 0 lỗi; bảng SRS điều chỉnh 1→3→7→14→30 theo yêu cầu user; SRS ladder đã nghiệm thu kèm Đợt 12.
 - [x] **Phase 7: ĐÃ NGHIỆM THU (2026-10-02)** — ApiEndToEndIT (15 test) + RefreshRotationIT (5 test, trả nợ DoD Phase 2 §5.2:243) + API_REFERENCE.md + README.md + audit §14; người dùng xác nhận `clean verify` MySQL BUILD SUCCESS, 58 IT 0 lỗi, jacoco service 97,1% (mục Đợt 14). Commit đợt: `aa898e3`.
+- [x] **Phase 9: ĐÃ NGHIỆM THU (2026-11-26)** — đăng ký xác thực email + khôi phục mật khẩu: 4 endpoint mới, migration V4, Brevo SMTP, thu hồi refresh token khi reset; 363 unit test xanh (sau khi bỏ rate limit/IP). Còn lại: IT cần MySQL và cập nhật client Flutter (mục Đợt 16).
 
 Không triển khai Android. Đợt 1 chưa tạo endpoint, entity, migration, hoặc cấu hình production.
 

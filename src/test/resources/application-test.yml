@@ -10,8 +10,19 @@ app:
     model: test-model
   cleanup:
     enabled: false
+  mail:
+    from: no-reply@example.test
 
 spring:
+  mail:
+    # Never used: the test context replaces EmailSender with a recording fake. Present only so the
+    # mail auto-configuration can create the JavaMailSender that SmtpEmailSender requires.
+    host: localhost
+    port: 2525
+    # Dummy values only: the test context replaces EmailSender, but the main yml keeps
+    # MAIL_USERNAME/MAIL_PASSWORD without defaults so a real deployment fails at startup.
+    username: test-smtp-user
+    password: test-smtp-password
   jpa:
     hibernate:
       ddl-auto: validate

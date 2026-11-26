@@ -29,6 +29,14 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, Long
 
     List<RefreshToken> findByUser_Id(Long userId);
 
+    /**
+     * Password change: drop every session of the account in one statement. Combined with the
+     * password update inside {@code PasswordTxService}, this is what logs other devices out.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("delete from RefreshToken t where t.user.id = :userId")
+    int deleteByUser_Id(@Param("userId") Long userId);
+
     /** Revocation on logout; bulk delete keeps it a single statement. */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("delete from RefreshToken t where t.token = :token")

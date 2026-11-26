@@ -7,7 +7,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.convert.converter.Converter;
 
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties({JwtProperties.class, AiProperties.class, CleanupProperties.class})
+@EnableConfigurationProperties({JwtProperties.class, AiProperties.class, CleanupProperties.class,
+        OtpProperties.class, MailProperties.class})
 public class ApplicationPropertiesConfig {
 
     @Bean

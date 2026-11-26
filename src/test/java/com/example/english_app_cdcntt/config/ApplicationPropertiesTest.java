@@ -15,6 +15,8 @@ import java.time.ZoneOffset;
 import java.util.HashMap;
 import java.util.Map;
 
+import com.example.english_app_cdcntt.repository.PasswordResetCodeRepository;
+import com.example.english_app_cdcntt.repository.PendingRegistrationRepository;
 import com.example.english_app_cdcntt.repository.RefreshTokenRepository;
 import com.example.english_app_cdcntt.service.TokenCleanupService;
 import org.mockito.Mockito;
@@ -34,7 +36,8 @@ class ApplicationPropertiesTest {
                 "app.jwt.secret=" + SECRET,
                 "app.ai.base-url=https://api.example.test/v1",
                 "app.ai.api-key=" + API_KEY,
-                "app.ai.model=test-model");
+                "app.ai.model=test-model",
+                "app.mail.from=no-reply@example.test");
     }
 
     @Test
@@ -53,6 +56,11 @@ class ApplicationPropertiesTest {
             assertThat(cleanup.enabled()).isTrue();
             assertThat(cleanup.cron()).isEqualTo("0 0 3 * * *");
             assertThat(cleanup.zone()).isEqualTo("UTC");
+            OtpProperties otp = context.getBean(OtpProperties.class);
+            assertThat(otp.registrationTtl()).isEqualTo(Duration.ofMinutes(10));
+            assertThat(otp.resetTtl()).isEqualTo(Duration.ofMinutes(15));
+            assertThat(otp.maxAttempts()).isEqualTo(5);
+            assertThat(context.getBean(MailProperties.class).from()).isEqualTo("no-reply@example.test");
             assertThat(context).hasSingleBean(Clock.class);
             assertThat(context.getBean(Clock.class).getZone()).isEqualTo(ZoneOffset.UTC);
             assertThat(jwt.toString()).doesNotContain(SECRET).contains("[REDACTED]");
@@ -74,20 +82,25 @@ class ApplicationPropertiesTest {
             "app.ai.base-url=https://api.example.test#fragment",
             "app.ai.connect-timeout=0s", "app.ai.connect-timeout=-1s",
             "app.ai.read-timeout=0s", "app.ai.read-timeout=-1s",
-            "app.cleanup.cron=invalid", "app.cleanup.zone=invalid-zone"
+            "app.cleanup.cron=invalid", "app.cleanup.zone=invalid-zone",
+            "app.mail.from=", "app.mail.from=not-an-email",
+            "app.otp.registration-ttl=0s", "app.otp.reset-ttl=-1m",
+            "app.otp.max-attempts=0"
     })
     void binding_withInvalidSetting_shouldFailStartup(String setting) {
         validRunner().withPropertyValues(setting).run(context -> assertThat(context).hasFailed());
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"app.jwt.secret", "app.ai.base-url", "app.ai.api-key", "app.ai.model"})
+    @ValueSource(strings = {"app.jwt.secret", "app.ai.base-url", "app.ai.api-key", "app.ai.model",
+            "app.mail.from"})
     void binding_withMissingRequiredSetting_shouldFailStartup(String missing) {
         Map<String, String> settings = new HashMap<>(Map.of(
                 "app.jwt.secret", SECRET,
                 "app.ai.base-url", "https://api.example.test/v1",
                 "app.ai.api-key", API_KEY,
-                "app.ai.model", "test-model"));
+                "app.ai.model", "test-model",
+                "app.mail.from", "no-reply@example.test"));
         settings.remove(missing);
         runner.withPropertyValues(settings.entrySet().stream()
                         .map(entry -> entry.getKey() + "=" + entry.getValue()).toArray(String[]::new))
@@ -129,17 +142,18 @@ class ApplicationPropertiesTest {
             // Isolate this test from developer machine credentials/properties.
             sources.remove("systemEnvironment");
             sources.remove("systemProperties");
-            sources.addFirst(new SystemEnvironmentPropertySource("systemEnvironment", Map.of(
-                    "JWT_SECRET", SECRET,
-                    "AI_BASE_URL", "https://api.example.test/v1",
-                    "AI_API_KEY", API_KEY,
-                    "AI_MODEL", "environment-model",
-                    "APP_JWT_ACCESSTOKENEXPIRATION", "45m",
-                    "APP_AI_READTIMEOUT", "12s",
-                    "APP_CLEANUP_ENABLED", "false",
-                    "DB_URL", "jdbc:mysql://localhost:3306/test?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true",
-                    "DB_USERNAME", "test-user",
-                    "DB_PASSWORD", "test-password")));
+            sources.addFirst(new SystemEnvironmentPropertySource("systemEnvironment", Map.ofEntries(
+                    Map.entry("JWT_SECRET", SECRET),
+                    Map.entry("AI_BASE_URL", "https://api.example.test/v1"),
+                    Map.entry("AI_API_KEY", API_KEY),
+                    Map.entry("AI_MODEL", "environment-model"),
+                    Map.entry("MAIL_FROM", "no-reply@example.test"),
+                    Map.entry("APP_JWT_ACCESSTOKENEXPIRATION", "45m"),
+                    Map.entry("APP_AI_READTIMEOUT", "12s"),
+                    Map.entry("APP_CLEANUP_ENABLED", "false"),
+                    Map.entry("DB_URL", "jdbc:mysql://localhost:3306/test?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true"),
+                    Map.entry("DB_USERNAME", "test-user"),
+                    Map.entry("DB_PASSWORD", "test-password"))));
             try {
                 new YamlPropertySourceLoader().load("application", new ClassPathResource("application.yml"))
                         .forEach(sources::addLast);
@@ -169,7 +183,9 @@ class ApplicationPropertiesTest {
         ApplicationContextRunner serviceRunner = new ApplicationContextRunner()
                 .withUserConfiguration(TokenCleanupService.class)
                 .withBean("clock", Clock.class, () -> Clock.fixed(Instant.EPOCH, ZoneOffset.UTC))
-                .withBean(RefreshTokenRepository.class, () -> Mockito.mock(RefreshTokenRepository.class));
+                .withBean(RefreshTokenRepository.class, () -> Mockito.mock(RefreshTokenRepository.class))
+                .withBean(PendingRegistrationRepository.class, () -> Mockito.mock(PendingRegistrationRepository.class))
+                .withBean(PasswordResetCodeRepository.class, () -> Mockito.mock(PasswordResetCodeRepository.class));
 
         serviceRunner.withPropertyValues("app.cleanup.enabled=false")
                 .run(context -> assertThat(context).doesNotHaveBean(TokenCleanupService.class));

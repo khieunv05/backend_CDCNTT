@@ -3,7 +3,9 @@ package com.example.english_app_cdcntt;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.english_app_cdcntt.service.AiClient;
+import com.example.english_app_cdcntt.service.EmailPurpose;
 import com.example.english_app_cdcntt.support.MySqlTestConfiguration;
+import com.example.english_app_cdcntt.support.RecordingEmailSender;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import java.net.URI;
@@ -56,6 +58,9 @@ class RefreshRotationIT {
     @Autowired
     private JdbcTemplate jdbc;
 
+    @Autowired
+    private RecordingEmailSender emailSender;
+
     /** Jackson 3 mapper (Boot 4 auto-configures tools.jackson, not com.fasterxml). */
     private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -66,6 +71,7 @@ class RefreshRotationIT {
     private AiClient aiClient;
 
     private static String username;
+    private static String email;
     private static String password;
 
     /** State carried across the ordered story: login → rotate → reuse → concurrent race. */
@@ -78,12 +84,14 @@ class RefreshRotationIT {
     @BeforeAll
     static void init() {
         username = "rot_user_" + Long.toUnsignedString(System.nanoTime());
+        email = "rot_" + Long.toUnsignedString(System.nanoTime()) + "@example.test";
         password = "Passw0rd!123";
     }
 
     @AfterAll
     static void cleanUp(@Autowired JdbcTemplate jdbc) {
         jdbc.update("DELETE FROM refresh_tokens WHERE user_id = (SELECT id FROM users WHERE username = ?)", username);
+        jdbc.update("DELETE FROM pending_registrations WHERE email = ?", email);
         jdbc.update("DELETE FROM users WHERE username = ?", username);
     }
 
@@ -116,7 +124,14 @@ class RefreshRotationIT {
     void seed() throws Exception {
         rest.post().uri("/api/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(Map.of("username", username, "password", password))
+                .body(Map.of("name", "Người kiểm thử", "username", username,
+                        "email", email, "password", password))
+                .exchange()
+                .expectStatus().isOk();
+        String code = emailSender.latestCode(email, EmailPurpose.REGISTRATION).orElseThrow();
+        rest.post().uri("/api/auth/register/confirm")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("email", email, "code", code))
                 .exchange()
                 .expectStatus().isCreated();
         login();

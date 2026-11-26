@@ -7,6 +7,19 @@ server:
 spring:
   application:
     name: english_app_cdcntt
+  mail:
+    # Brevo SMTP. Verify one sender address in Brevo first; when a domain is verified, only
+    # MAIL_FROM has to change.
+    host: ${MAIL_HOST}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME}
+    password: ${MAIL_PASSWORD}
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: true
+      mail.smtp.connectiontimeout: 10000
+      mail.smtp.timeout: 10000
+      mail.smtp.writetimeout: 10000
   datasource:
     url: ${DB_URL}
     username: ${DB_USERNAME}
@@ -37,6 +50,12 @@ app:
     enabled: true
     cron: "0 0 3 * * *"
     zone: UTC
+  mail:
+    from: ${MAIL_FROM}
+  otp:
+    registration-ttl: 10m
+    reset-ttl: 15m
+    max-attempts: 5
 
 logging:
   level:

@@ -16,6 +16,7 @@
 - Flyway quản lý schema; `spring.jpa.hibernate.ddl-auto=validate`; không dùng Hibernate để cập nhật schema tự động.
 - JWT dùng jjwt **0.12.6**; mật khẩu hash bằng `BCryptPasswordEncoder(12)`.
 - AI bên ngoài được gọi qua HTTPS từ backend; secret lấy từ environment.
+- Gửi email giao dịch (mã đăng ký, mã khôi phục) qua **Brevo SMTP** bằng `spring-boot-starter-mail`; mã 6 chữ số chỉ lưu dạng SHA-256.
 - Base package: `com.example.english_app_cdcntt`.
 - Hiện trạng khi lập kế hoạch: skeleton Spring Boot, đã có starter JPA/security/validation/webmvc, MySQL driver, Lombok và test starters; chưa có nghiệp vụ.
 
@@ -29,12 +30,15 @@
 6. Scheduler dọn refresh token hết hạn.
 7. Migration, bảo mật, cấu hình, kiểm thử và hướng dẫn chạy/triển khai backend.
 8. Thêm từ theo chủ đề (act-20): AI xác nhận chủ đề, sinh 10 từ mới tái dùng word_cache và lưu thẳng vào sổ từ của user.
+9. Đăng ký có xác thực email: bước 1 tạo bản nháp và gửi mã, bước 2 xác thực mã mới tạo tài khoản thật (bổ sung 2026-11-26).
+10. Khôi phục mật khẩu: yêu cầu mã qua email (luôn trả cùng một message), đặt lại mật khẩu và thu hồi toàn bộ refresh token (bổ sung 2026-11-26).
 
 ### 1.3. Ngoài phạm vi
 
 - Mọi công việc triển khai Android/client, UI, lưu token phía thiết bị, refresh interceptor, thông báo, widget, OCR, camera và quyền thiết bị.
 - Không có endpoint upload ảnh/OCR, đăng ký thiết bị hoặc gửi push notification.
-- Không triển khai quên mật khẩu, đăng nhập mạng xã hội, vai trò quản trị hoặc cập nhật đoạn văn vì chưa thuộc thiết kế hiện tại.
+- Không triển khai đăng nhập mạng xã hội, vai trò quản trị hoặc cập nhật đoạn văn vì chưa thuộc thiết kế hiện tại.
+- Không đăng nhập bằng email, magic link hay liên kết xác thực một bước: đăng nhập vẫn bằng tên đăng nhập, email chỉ là kênh khôi phục mật khẩu duy nhất.
 - `GET /api/words/due-count` vẫn thuộc backend: đây là API dữ liệu độc lập, không phải công việc triển khai widget.
 
 ### 1.4. Quy tắc kiến trúc
@@ -48,7 +52,7 @@
 
 ---
 
-## 2. CƠ SỞ DỮ LIỆU — 8 BẢNG
+## 2. CƠ SỞ DỮ LIỆU — 10 BẢNG
 
 ### 2.1. Quy ước chung
 
@@ -58,6 +62,7 @@
 - JPA Auditing dùng cùng nguồn thời gian; không trộn `NOW()` của DB với thời gian ứng dụng trong logic SRS.
 - `english` dùng `strip().toLowerCase(Locale.ROOT)` thống nhất trước lookup, kiểm tra trùng và lưu ở cả `words` và `word_cache`; không lưu phiên bản chữ hoa riêng trong giai đoạn này.
 - `username` phân biệt hoa/thường, không tự trim hoặc lowercase. Cột `username` và `english` dùng collation `utf8mb4_0900_bin` để khóa unique có hành vi xác định.
+- Cột `email` của tài khoản và bản nháp dùng collation `utf8mb4_0900_ai_ci` + UNIQUE: mỗi hộp thư chỉ thuộc một tài khoản, không phụ thuộc hoa/thường.
 
 ### 2.2. Schema mục tiêu
 
@@ -65,6 +70,8 @@
 users(
   id BIGINT PK,
   username VARCHAR(50) UNIQUE NOT NULL,
+  email VARCHAR(254) UNIQUE NOT NULL,
+  name VARCHAR(100) NOT NULL,
   password VARCHAR(60) NOT NULL
 )
 
@@ -114,6 +121,24 @@ refresh_tokens(
   token VARCHAR(2048) CHARACTER SET ascii COLLATE ascii_bin UNIQUE NOT NULL,
   expiry_date DATETIME(6) NOT NULL, created_at DATETIME(6) NOT NULL
 )
+
+pending_registrations(
+  id BIGINT PK, name VARCHAR(100) NOT NULL,
+  username VARCHAR(50) COLLATE utf8mb4_0900_bin NOT NULL,
+  email VARCHAR(254) COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  password VARCHAR(60) NOT NULL, code_hash VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  expires_at DATETIME(6) NOT NULL, attempts INT NOT NULL DEFAULT 0 CHECK(attempts >= 0),
+  created_at DATETIME(6) NOT NULL,
+  UNIQUE(username), UNIQUE(email), INDEX(expires_at)
+)
+
+password_reset_codes(
+  id BIGINT PK, user_id BIGINT FK→users NOT NULL ON DELETE CASCADE,
+  code_hash VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  expires_at DATETIME(6) NOT NULL, attempts INT NOT NULL DEFAULT 0 CHECK(attempts >= 0),
+  created_at DATETIME(6) NOT NULL,
+  UNIQUE(user_id), INDEX(expires_at)
+)
 ```
 
 - Mọi PK ở trên là AUTO_INCREMENT; tên constraint/index phải rõ ràng trong migration.
@@ -123,6 +148,9 @@ refresh_tokens(
 - Word có 1–20 nghĩa; AI sinh 1–3 nghĩa. Các trường chuỗi trong form/result không vượt kích thước cột tương ứng.
 - Tạo index `(user_id, next_review)` trên words, `expiry_date` trên refresh_tokens, FK index trên các bảng con và `phrases.user_id`.
 - Không tạo index trùng với index do UNIQUE/FK đã cung cấp; UNIQUE `(user_id, english)` đã hỗ trợ truy vấn theo `user_id`.
+- `pending_registrations` là **bản nháp đăng ký**, không phải tài khoản: mật khẩu hash BCrypt, mã hash SHA-256, TTL 10 phút, sai 5 lần thì xoá; bản ghi chỉ tồn tại đến khi mã được chấp nhận hoặc hết hạn. Gửi lại làm mới bản nháp tại chỗ và phát mã mới, không có cooldown/hạn mức.
+- `password_reset_codes` giữ **một row/tài khoản** (UNIQUE `user_id`), mã hash SHA-256, TTL 15 phút; FK `ON DELETE CASCADE` để xoá tài khoản là xoá luôn mã.
+- V4 backfill `users.email` cho tài khoản cũ bằng placeholder không gửi được thư `legacy+<id>@legacy.invalid` rồi mới đặt `NOT NULL`; các tài khoản này cần cập nhật email thật trước khi dùng khôi phục mật khẩu.
 
 ---
 
@@ -137,24 +165,32 @@ public enum PartOfSpeech { NOUN, VERB, ADJECTIVE, ADVERB, PREPOSITION, CONJUNCTI
 com.example.english_app_cdcntt
 ├── controller/    AuthController, WordController, PhraseController, GlobalErrorController (/error)
 ├── form/          RegisterForm, LoginForm, LogoutForm, RefreshForm,
+│                  RegisterConfirmForm, ForgotPasswordForm, ResetPasswordForm,
 │                  WordForm, WordValueForm, ReviewForm, PhraseForm
 ├── dto/           AuthResponse, MessageResponse, ValidationErrorResponse,
 │                  SuccessResponse<T>, ErrorResponse, FieldErrorDetail,
 │                  WordDto, WordValueDto, GeneratedWordDto,
-│                  DueCountResponse, ReviewResultResponse, PhraseDto, GrammarErrorDto
+│                  DueCountResponse, ReviewResultResponse, PhraseDto, GrammarErrorDto,
+│                  VerificationTicket, RegistrationConfirmationResult,
+│                  PasswordResetRequestResult, PasswordResetResult
 ├── service/       AuthService, WordService, PhraseService, GradingService,
 │                  GenerateService, TokenCleanupService, SrsIntervals,
-│                  AiClient, WordCacheTxService, PhraseTxService
+│                  AiClient, WordCacheTxService, PhraseTxService,
+│                  RegistrationService, PasswordResetService,
+│                  EmailSender, EmailAddresses, EmailPurpose
 ├── service/impl/  AuthServiceImpl, WordServiceImpl, PhraseServiceImpl,
 │                  GenerateServiceImpl, GradingServiceImpl, LlmAiClient,
-│                  WordCacheTxServiceImpl, PhraseTxServiceImpl
-├── service/tx/    RegistrationTxService, RefreshTokenTxService, RefreshRotationResult
+│                  WordCacheTxServiceImpl, PhraseTxServiceImpl,
+│                  RegistrationServiceImpl, PasswordResetServiceImpl, SmtpEmailSender
+├── service/tx/    RegistrationTxService, PasswordResetTxService, RefreshTokenTxService,
+│                  RefreshRotationResult
 ├── mapper/        WordMapper, WordCacheMapper, PhraseMapper
-├── repository/    8 JpaRepository tương ứng 8 entity
+├── repository/    10 JpaRepository tương ứng 10 entity
 ├── entity/        User, Word, WordValue, WordCache, WordCacheValue,
-│                  Phrase, GrammarError, RefreshToken
+│                  Phrase, GrammarError, RefreshToken,
+│                  PendingRegistration, PasswordResetCode
 ├── config/        SecurityConfig, JwtService, JwtAuthenticationFilter,
-│                  JwtProperties, AiProperties, CleanupProperties,
+│                  JwtProperties, AiProperties, CleanupProperties, MailProperties, OtpProperties,
 │                  AiClientConfig, JpaAuditingConfig, SchedulingConfig, ClockConfig,
 │                  ApplicationPropertiesConfig, AppUserDetailsService, UserPrincipal,
 │                  TokenType, SecretValue, RestAuthenticationEntryPoint,
@@ -206,11 +242,11 @@ Ví dụ response tạo từ:
 }
 ```
 
-### 4.1. Danh sách 16 endpoint
+### 4.1. Danh sách 22 endpoint
 
 | # | Endpoint | Thành công | Lỗi nghiệp vụ chính |
 |---|---|---|---|
-| 1 | POST `/api/auth/register` | 201 MessageResponse: `Tạo tài khoản thành công` | 400 validation; 409 `Tên đăng nhập đã tồn tại` |
+| 1 | POST `/api/auth/register` — bước 1 | 200 MessageResponse: `Mã xác thực đã được gửi tới email` — **chưa tạo tài khoản** | 400 validation; 409 `Tên đăng nhập đã tồn tại` (kể cả khi bị bản nháp của mailbox khác giữ); 409 `Email này đã được sử dụng`; 502 `Không gửi được email xác thực, vui lòng thử lại` |
 | 2 | POST `/api/auth/login` | 200 AuthResponse | 401 `Đăng nhập thất bại` |
 | 3 | POST `/api/auth/logout` | 200 `Đăng xuất thành công` | 400 request không hợp lệ |
 | 4 | POST `/api/auth/refresh` | 200 AuthResponse mới | 401 `Đăng nhập thất bại` hoặc `Phiên đăng nhập hết hạn` |
@@ -226,6 +262,11 @@ Ví dụ response tạo từ:
 | 14 | DELETE `/api/phrases/{id}` | 200 `Xóa đoạn văn thành công` | 403 `Không có quyền xóa đoạn văn này` |
 | 15 | POST `/api/words/generate-topic` | 200 SuccessResponse<List<GeneratedWordDto>>: `Đã sinh từ theo chủ đề` — chỉ đề xuất + ghi cache, không đụng sổ (id null) | 400 `Chủ đề không hợp lệ, vui lòng nhập lại`; 502 lỗi AI |
 | 16 | POST `/api/words/generate-topic/confirm` | 201 SuccessResponse<List<WordDto>>: `Thêm từ theo chủ đề thành công` — data là các từ vừa thêm vào sổ | 400 `Từ hoặc cụm từ gửi lên không phải một từ tiếng Anh hợp lệ` |
+| 17 | POST `/api/auth/register/confirm` — bước 2 | 201 MessageResponse: `Tạo tài khoản thành công` | 400 validation; 400 `Mã xác thực không đúng hoặc đã hết hạn` (mã sai/hết hạn/quá 5 lần, cùng message cho mọi trường hợp); 409 `Tên đăng nhập đã tồn tại` hoặc `Email này đã được sử dụng` nếu bị chiếm trong lúc chờ |
+| 18 | POST `/api/auth/forgot-password` | 200 MessageResponse: `Nếu email này đã đăng ký, mã xác thực đã được gửi tới email đó` | Chỉ 400 validation; email không tồn tại hay SMTP lỗi **vẫn 200 im lặng** |
+| 19 | POST `/api/auth/reset-password` | 200 MessageResponse: `Đặt lại mật khẩu thành công` — **không trả token**, thu hồi toàn bộ refresh token | 400 validation; 400 `Mã xác thực không đúng hoặc đã hết hạn`; 400 `Mật khẩu mới phải khác mật khẩu hiện tại` (chỉ so sau khi mã hợp lệ) |
+
+Bảng trên liệt kê 19/22 endpoint; `POST /api/auth/change-password`, `GET /api/users/me` và `PUT /api/users/me` có từ trước nhưng không nằm trong bảng này (xem `API_REFERENCE.md` §2).
 
 Tất cả endpoint protected còn có nhánh 401 chung. Lỗi AI luôn dùng message `Dịch vụ AI tạm thời không khả dụng`.
 
@@ -235,15 +276,18 @@ Tất cả endpoint protected còn có nhánh 401 chung. Lỗi AI luôn dùng me
 
 ### 5.1. Form và validation
 
-- Register/Login: `{username, password}`. Username 3–50 ký tự, regex `[A-Za-z0-9_.]+`, không blank.
-- Password không blank, ít nhất 8 ký tự theo Bean Validation và **tối đa 72 byte UTF-8**; cần custom validator, không coi `@Size(max=72)` là kiểm tra đủ. Không trim/normalize password.
-- Register constraint fail → 400 validation chung. Login constraint fail hoặc sai username/password → **401 `Đăng nhập thất bại`**, không tiết lộ trường sai.
+- Register (bước 1): `{name, username, email, password}`. `name` 1–100 ký tự (được trùng); username như trên; `email` hợp lệ, tối đa 254 ký tự, chuẩn hoá trước khi so trùng; password như trên.
+- Register-confirm: `{email, code}`; `code` bắt buộc đúng 6 chữ số. Forgot-password: `{email}` cùng ràng buộc email. Reset-password: `{email, code, newPassword}` với `newPassword` như password.
+- Register/confirm/forgot/reset constraint fail → 400 validation chung (`Thông tin không hợp lệ` + `details[]`). Login constraint fail hoặc sai username/password → **401 `Đăng nhập thất bại`**, không tiết lộ trường sai.
 - Logout/Refresh: `{refreshToken}` không blank, tối đa 2048 ký tự ASCII. Logout form sai → 400; refresh constraint fail → 401 `Đăng nhập thất bại`. JSON hỏng vẫn áp dụng 400 chung.
 - `AuthResponse(String accessToken, String refreshToken, long expiresIn)`.
 
 ### 5.2. Luồng nghiệp vụ và transaction
 
-- **Register:** kiểm tra username → BCrypt → lưu trong transaction ngắn. UNIQUE là lớp chặn cuối; race trùng username cũng trả 409. Catch lỗi unique bên ngoài transaction ghi đã rollback, chỉ ánh xạ đúng constraint.
+- **Register (bước 1):** chuẩn hoá email, kiểm tra username/email đã thuộc tài khoản, rồi ghi **bản nháp** `pending_registrations` (BCrypt password + SHA-256 code, TTL 10 phút) trong một transaction ghi; **sau khi commit** mới gửi mã 6 chữ số qua Brevo (SMTP không nằm trong transaction). Chưa tạo `users`; UNIQUE là lớp chặn cuối (username trùng tài khoản/bản nháp mailbox khác, email trùng tài khoản → 409). SMTP lỗi → 502 nhưng **giữ bản nháp** để gọi lại; không có cooldown hay hạn mức gửi mã.
+- **Register-confirm (bước 2):** tìm bản nháp theo email; mã sai/hết hạn/không có bản nháp đều trả **cùng một 400** `Mã xác thực không đúng hoặc đã hết hạn`; sai tăng `attempts`, đủ 5 lần thì xoá bản nháp. Mã đúng → tạo `users` và xoá bản nháp trong **cùng một transaction**; UNIQUE race → 409. Mã dùng một lần, mã mới huỷ mã cũ.
+- **Forgot-password:** email không tồn tại → im lặng; SMTP lỗi chỉ ghi log. Mọi nhánh đều trả 200 cùng một message (chống dò tài khoản). Mã TTL 15 phút, một row/tài khoản; gửi lại bất cứ lúc nào.
+- **Reset-password:** kiểm tra mã trước; chỉ khi mã hợp lệ mới so mật khẩu mới với hash cũ (trùng → 400 `Mật khẩu mới phải khác mật khẩu hiện tại`) — đảo thứ tự sẽ biến message reuse thành oracle xác nhận email có tài khoản; email không có tài khoản/mã sai/hết hạn → 400 thống nhất. Thành công: đổi hash BCrypt, xoá mã, và **thu hồi toàn bộ refresh token** của tài khoản trong cùng transaction. **Không trả token** — client đăng nhập lại.
 - **Login:** xác thực mật khẩu → phát token → lưu refresh token; chỉ trả thành công sau commit.
 - **JWT:** HS256; claims `sub=username`, `uid=userId`, `type=access|refresh`, `iat`, `exp`, **`jti` ngẫu nhiên mỗi token**. Secret Base64 decode được ít nhất 32 byte; fail startup nếu thiếu/yếu.
 - **Logout:** xóa refresh token đúng chuỗi trong transaction; token không còn trong DB vẫn 200. Không thu hồi access token stateless; token này còn hiệu lực tối đa đến expiry.
@@ -258,7 +302,7 @@ Tất cả endpoint protected còn có nhánh 401 chung. Lỗi AI luôn dùng me
 ### 5.3. Security filter chain
 
 - Security 7 lambda DSL, stateless; tắt CSRF cho API bearer thuần, không dùng cookie phiên đăng nhập.
-- `permitAll` đúng 4 POST auth; các `/api/**` còn lại yêu cầu authenticated; đường dẫn khác mặc định deny trừ health endpoint tối thiểu được cấu hình khi triển khai.
+- `permitAll` đúng 7 POST auth: register, register/confirm, forgot-password, reset-password, login, refresh, logout; các `/api/**` còn lại yêu cầu authenticated; đường dẫn khác mặc định deny trừ health endpoint tối thiểu được cấu hình khi triển khai.
 - Filter chỉ chấp nhận `type=access`; xác thực token trước khi tin claims, load user và đối chiếu `uid` với DB.
 - Filter không chuyển lỗi hạ tầng/exception từ controller thành lỗi credential.
 - `AuthenticationEntryPoint`/`AccessDeniedHandler` trả JSON đúng contract; disable servlet registration trùng của filter bean.
@@ -393,18 +437,23 @@ record GradingError(String incorrect, String correction, String explanation) {}
 
 ## 9. SCHEDULER VÀ EXCEPTION HANDLING
 
-### 9.1. Dọn refresh token — act/seq-18
+### 9.1. Dọn dữ liệu hết hạn — act/seq-18
 
 - `@Scheduled(cron="${app.cleanup.cron}", zone="${app.cleanup.zone}")`.
 - Mặc định 03:00 UTC hằng ngày; dùng cùng Clock UTC như auth.
-- Bulk delete `expiryDate <= now` bằng JPQL `@Modifying` trong transaction; trả/log số row bị xóa, không log chuỗi token.
-- Chỉ xóa token hết hạn; task idempotent; không liên quan scheduler/notification trên thiết bị.
+- Bulk delete `expiryDate <= now` / `expiresAt <= now` bằng JPQL `@Modifying` trong transaction; trả/log số row bị xóa, không log chuỗi token hay mã.
+- Dọn cả 3 bảng: `refresh_tokens` (token hết hạn), `pending_registrations` (bản nháp hết hạn), `password_reset_codes` (mã reset hết hạn).
+- Chỉ xóa dữ liệu hết hạn; task idempotent; không liên quan scheduler/notification trên thiết bị.
 
 ### 9.2. Exception mapping
 
 | Exception/trường hợp | HTTP | Message |
 |---|---|---|
 | DuplicateUsernameException | 409 | Tên đăng nhập đã tồn tại |
+| DuplicateEmailException | 409 | Email này đã được sử dụng |
+| InvalidVerificationCodeException | 400 | Mã xác thực không đúng hoặc đã hết hạn |
+| PasswordReuseException | 400 | Mật khẩu mới phải khác mật khẩu hiện tại |
+| EmailDeliveryException | 502 | Không gửi được email xác thực, vui lòng thử lại |
 | DuplicateWordException | 409 | Từ này đã có trong sổ của bạn |
 | InvalidCredentialsException / refresh không hợp lệ | 401 | Đăng nhập thất bại |
 | Access token thiếu/sai/hết hạn | 401 | Token không hợp lệ hoặc hết hạn |
@@ -417,7 +466,7 @@ record GradingError(String incorrect, String correction, String explanation) {}
 | Lỗi không dự kiến | 500 | Lỗi hệ thống |
 
 - `GlobalExceptionHandler` xử lý controller/service exceptions; lỗi filter do entry point/filter handler xử lý cùng JSON contract.
-- Bean Validation login/refresh → 401 auth, phrase → 400 phrase, generate → 400 word; các form khác → 400 chung. Bao phủ cả validation method/query khi dùng Spring MVC method validation.
+- Bean Validation login/refresh → 401 auth, phrase → 400 phrase, generate → 400 word, register/register-confirm/forgot-password/reset-password → 400 chung; các form khác → 400 chung. Bao phủ cả validation method/query khi dùng Spring MVC method validation.
 - JSON malformed/type mismatch dùng 400 chung. Framework errors như 404 route không tồn tại, 405, 415 phải giữ đúng status, không bị catch-all đổi thành 500.
 - Không trả stack trace, SQL hoặc nội dung token ra HTTP. Không catch exception trong controller để điều khiển transaction.
 
@@ -429,6 +478,7 @@ record GradingError(String incorrect, String correction, String explanation) {}
 
 - `io.jsonwebtoken:jjwt-api:0.12.6`; `jjwt-impl` và `jjwt-jackson` cùng version, scope runtime.
 - `org.springframework.boot:spring-boot-starter-flyway`; `org.flywaydb:flyway-mysql`.
+- `org.springframework.boot:spring-boot-starter-mail` cho SMTP Brevo (mã đăng ký/khôi phục).
 - Test dùng MySQL local 8.0.43, không cần Docker/Testcontainers dependencies. Import cấu hình datasource test có guard trước khi Flyway chạy.
 - Database và tài khoản riêng `lenglish_test` tại localhost:3306; credentials qua `TEST_DB_*`, không dùng tài khoản root hoặc fallback credentials ứng dụng. Xem [hướng dẫn test local](HUONG_DAN_TEST_MYSQL.md).
 - Dùng version quản lý bởi Boot BOM khi có; không sao chép version dependency Boot 3. Jackson của ứng dụng Boot 4 và module Jackson do jjwt dùng phải được kiểm tra bằng dependency tree và smoke test parse/sign JWT.
@@ -453,6 +503,17 @@ spring:
     enabled: true
     locations: classpath:db/migration
     baseline-on-migrate: false
+  mail:
+    host: ${MAIL_HOST}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME}
+    password: ${MAIL_PASSWORD}
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: true
+      mail.smtp.connectiontimeout: 10000
+      mail.smtp.timeout: 10000
+      mail.smtp.writetimeout: 10000
 app:
   jwt:
     secret: ${JWT_SECRET}
@@ -462,8 +523,14 @@ app:
     base-url: ${AI_BASE_URL}
     api-key: ${AI_API_KEY}
     model: ${AI_MODEL}
-    connect-timeout: 10s
-    read-timeout: 30s
+    connect-timeout: 60s
+    read-timeout: 60s
+  mail:
+    from: ${MAIL_FROM}
+  otp:
+    registration-ttl: 10m
+    reset-ttl: 15m
+    max-attempts: 5
   cleanup:
     cron: "0 0 3 * * *"
     zone: UTC
@@ -477,6 +544,8 @@ logging.level.com.example.english_app_cdcntt: INFO
 - Test DB dùng MySQL local 8.0.43 và `MySqlTestConfiguration`, JWT secret giả đủ mạnh, AiClient mock/stub và disable scheduler.
 - Test nhanh không cần DB/credentials; integration test cần tài khoản test riêng qua `TEST_DB_*`. Không tự drop/clean schema; lần đầu provision database trống, các lần sau giữ Flyway history và rollback fixture DML. Không chạy song song nhiều bộ test trên cùng database.
 - `V1__init_schema.sql` tạo đủ 8 bảng, FK/cascade/unique/check/index theo §2; không sửa migration đã áp dụng. Với DB cũ phải có kế hoạch baseline riêng, không tự bật baseline-on-migrate.
+- Migration tiếp theo: `V2__add_phrase_title.sql` (title đoạn văn), `V3__add_user_name.sql` (`users.name`), `V4__add_email_and_registration_codes.sql` (`users.email` unique + `pending_registrations` + `password_reset_codes`, backfill email cũ bằng placeholder rồi mới `NOT NULL`).
+- Biến môi trường mới cho Brevo: `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM`; `app.otp.*` và `app.mail.from` có default trong `application.yml`.
 
 ---
 
@@ -529,7 +598,7 @@ logging.level.com.example.english_app_cdcntt: INFO
 ### Phase 7 — Nghiệm thu và vận hành backend
 
 1. Integration HTTP end-to-end bằng JWT thật, MySQL test local, AI stub: register→login→generate→tạo từ→review→due-count→phrase→logout→refresh bị từ chối.
-2. API reference với request/response mẫu cho đủ 14 endpoint; README hướng dẫn biến môi trường, DB, migrate, test và chạy JAR. OpenAPI tự sinh là tùy chọn, chỉ thêm thư viện tương thích Boot 4 đã kiểm chứng.
+2. API reference với request/response mẫu cho đủ 22 endpoint; README hướng dẫn biến môi trường, DB, migrate, test và chạy JAR. OpenAPI tự sinh là tùy chọn, chỉ thêm thư viện tương thích Boot 4 đã kiểm chứng.
 3. Rà soát log/secrets, cấu hình production và checklist §14.
 4. **DoD:** `./mvnw.cmd verify` xanh, integration tests thực sự chạy, coverage service ≥80%, backend chạy độc lập không cần client.
 
@@ -539,6 +608,14 @@ logging.level.com.example.english_app_cdcntt: INFO
 2. Bước 1 `POST /api/words/generate-topic`: lọc trùng, cache-first từng từ, **chỉ ghi cache, không đụng sổ** — xong: `TopicGenerateServiceImpl` (chuẩn hóa → checkTopic → exclude → AI → lọc trùng → cache-first → `GeneratedWordDto` id null), trả 200 `Đã sinh từ theo chủ đề`.
 3. Bước 2 `POST /api/words/generate-topic/confirm` (row 16): người dùng chọn/sửa từ → `TopicConfirmForm` (1–20 `WordForm` như create-word, `@Valid`) → `TopicGenerateServiceImpl.confirmTopicWords` (Phase A: chuẩn hóa, gộp trùng, lọc sai shape — **không cache, không AI**) → `TopicTxServiceImpl.addWords` (1 tx: skip owned/duplicate, `Word` mới `reviewCount=0`, due ngay, `word_values` theo form gửi lên) — 201 `Thêm từ theo chủ đề thành công`; `InvalidTopicException` → 400, `InvalidWordException` → 400.
 4. **DoD:** chủ đề sai → 400 và DB không đổi; AI fail/schema sai ở bước 1 → 502 và DB không đổi; từ sai shape/đã có trong sổ/trùng lô ở bước 2 bị bỏ qua nhưng các từ hợp lệ vẫn lưu; từ mới có `reviewCount=0` và due ngay; bước 1 không tạo `Word`; bước 2 không cache/không AI, lưu theo `WordForm` gửi lên và trả `SuccessResponse<List<WordDto>>`. — đạt: unit + controller test cho đầy đủ nhánh trên, bộ 291 test xanh (`./mvnw test`).
+
+### Phase 9 — Đăng ký xác thực email và khôi phục mật khẩu ✅ đã hoàn thành (2026-11-26)
+
+1. Migration `V4__add_email_and_registration_codes.sql`: `users.email` unique (ai_ci), bảng `pending_registrations` (bản nháp, UNIQUE email + username) và `password_reset_codes` (UNIQUE user, FK cascade); backfill email tài khoản cũ bằng placeholder `legacy+<id>@legacy.invalid` rồi mới `NOT NULL`.
+2. Bốn endpoint: `POST /api/auth/register` (bước 1 — 200, chỉ tạo bản nháp + gửi mã), `POST /api/auth/register/confirm` (bước 2 — 201, tạo tài khoản thật), `POST /api/auth/forgot-password` (luôn 200 cùng message), `POST /api/auth/reset-password` (200, **không trả token**, thu hồi toàn bộ refresh token).
+3. Chính sách mã: 6 chữ số, chỉ lưu SHA-256; TTL 10 phút (đăng ký) / 15 phút (reset); sai 5 lần huỷ mã; mã dùng một lần, mã mới huỷ mã cũ; gửi lại = gọi lại chính endpoint đó, không giới hạn tần suất. Đăng nhập vẫn bằng username.
+4. Gửi mail qua Brevo SMTP với `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM`; `app.otp.*` có default trong `application.yml`; scheduler dọn thêm 2 bảng hết hạn; không log mã.
+5. **DoD:** `./mvnw.cmd -DskipITs test` xanh **363 test** (0 failure/error, 2026-11-26; gồm `RegistrationTxServiceTest` 11, `PasswordResetTxServiceTest` 9, `RegistrationServiceImplTest` 12, `PasswordResetServiceImplTest` 7, `TokenCleanupServiceTest` 2); integration test cần MySQL local **chưa chạy** trong đợt này. Tài liệu `API_REFERENCE.md`, `POSTMAN_HUONG_DAN.md`, `KE_HOACH_TRIEN_KHAI.md`, `TIEN_DO_TRIEN_KHAI.md` và `README.md`/`.env.example` đã cập nhật.
 
 **Ước lượng sơ bộ:** 8–12 ngày làm việc cho một người đã quen stack, cộng dự phòng 20–30% cho tích hợp/provider và xử lý concurrency. Chỉ tính backend; cần hiệu chỉnh sau Phase 0, không coi đây là cam kết tiến độ.
 
@@ -562,6 +639,9 @@ logging.level.com.example.english_app_cdcntt: INFO
 - AI cache-hit không call; validWord false; validPhrase false; thiếu score/null/wrong type/out-of-range; timeout/429/5xx; không có row lỗi hoặc bản ghi mồ côi.
 - Cascade và orphanRemoval; phrase 5000 ký tự, correctedText dài hơn 255; field vượt giới hạn bị từ chối trước ghi DB.
 - Cleanup trước/bằng/sau expiry; protected API thiếu JWT; refresh token không dùng thay access token.
+- Mã đăng ký/reset: đúng/sai/hết hạn/đã dùng; sai 5 lần huỷ mã; mã mới huỷ mã cũ; gửi lại bất cứ lúc nào, không cooldown/hạn mức.
+- Register chưa tạo `users` trước confirm; confirm tạo tài khoản + xoá bản nháp trong một transaction; race username/email → 409.
+- Reset mật khẩu: mật khẩu mới trùng cũ → 400 (chỉ so sau khi mã hợp lệ); thành công thu hồi **toàn bộ** refresh token và không trả token; mã/email không tồn tại dùng chung một 400.
 
 ---
 
@@ -586,8 +666,8 @@ logging.level.com.example.english_app_cdcntt: INFO
 
 ### 14.1. Chức năng và chất lượng
 
-- [ ] MySQL trống migrate đủ 8 bảng; schema validate khớp entity; không có bảng phụ ngoài dự kiến.
-- [ ] Đủ 16 endpoint (gồm generate-topic + confirm) đúng status/JSON/message, tài liệu request/response cập nhật.
+- [ ] MySQL trống migrate đủ 10 bảng; schema validate khớp entity; không có bảng phụ ngoài dự kiến.
+- [ ] Đủ 22 endpoint (gồm 4 endpoint xác thực email/khôi phục mật khẩu, generate-topic + confirm) đúng status/JSON/message, tài liệu request/response cập nhật.
 - [ ] Không lộ/sửa dữ liệu chéo user; kiểm tra cả ID nghĩa và phrase/review.
 - [ ] Rotation atomic, expired deletion commit, reuse/concurrent token test đạt.
 - [ ] Cache race không hỏng transaction; không lưu kết quả AI lỗi; phrase/errors atomic.
@@ -595,6 +675,8 @@ logging.level.com.example.english_app_cdcntt: INFO
 - [ ] `./mvnw.cmd verify` chạy cả unit/slice/integration và JaCoCo check ≥80% service line coverage.
 - [ ] Automated tests không cần AI thật, client hoặc credentials cá nhân.
 - [ ] Không secret trong source/log; không log nguyên password/token/đoạn văn mặc định.
+- [ ] Mã xác thực chỉ lưu SHA-256 và chỉ nằm trong email: không trả trong response, không log, không ghi vào message lỗi.
+- [ ] `forgot-password` luôn 200 cùng message (kể cả email lạ/SMTP lỗi); `reset-password` không trả token và thu hồi hết refresh token.
 
 ### 14.2. Triển khai backend
 
@@ -603,7 +685,7 @@ logging.level.com.example.english_app_cdcntt: INFO
 - [ ] DB account quyền tối thiểu; tách migration credentials khỏi runtime ở production; kết nối DB ngoài máy dùng TLS phù hợp.
 - [ ] Secret cấp qua môi trường/secret manager; không dùng root rỗng hoặc secret dev; có quy trình đổi JWT secret và thông báo ảnh hưởng phiên đăng nhập.
 - [ ] Health/readiness check tối thiểu (Actuator hoặc endpoint nội bộ); không public chi tiết cấu hình/DB/secrets.
-- [ ] Cấu hình request size/rate limit ở proxy cho auth và AI để hạn chế brute force và chi phí; ghi rõ ngưỡng vận hành, response 413/429 do proxy nằm ngoài bảng lỗi nghiệp vụ.
+- [ ] Cấu hình request size ở proxy cho auth và AI; đồ án không đặt rate limit trong ứng dụng, nếu triển khai thật thì bổ sung ở proxy/ingress.
 - [ ] Log có correlation ID, theo dõi lỗi/độ trễ AI và DB; backup MySQL và thử restore trước khi dùng dữ liệu quan trọng.
 - [ ] Smoke test qua HTTPS trên backend đã deploy; không khởi chạy client để thay thế kiểm thử API.
 
@@ -613,9 +695,13 @@ logging.level.com.example.english_app_cdcntt: INFO
 
 Nguồn: `D:\bao_cao_LEnglish\docs\`; activity tại `activity\act-XX-*.puml`, sequence tại `sequence\seq-XX-*.puml`.
 
+> Đăng ký 2 bước (xác thực email) và khôi phục mật khẩu đã có diagram riêng: `act-23-xac-thuc-email.puml` + `seq-23-xac-thuc-email.puml` và `act-22-quen-mat-khau.puml` + `seq-22-quen-mat-khau.puml` (bổ sung 2026-11-26).
+
 | Luồng | Activity / Sequence | Phần backend trong phạm vi |
 |---|---|---|
 | Tạo tài khoản | 01 | POST /api/auth/register |
+| Khôi phục mật khẩu | 22 | POST /api/auth/forgot-password + POST /api/auth/reset-password |
+| Xác thực email đăng ký | 23 | POST /api/auth/register (bước 1) + POST /api/auth/register/confirm (bước 2) |
 | Đăng nhập | 02 | POST /api/auth/login |
 | Đăng xuất | 03 | POST /api/auth/logout |
 | Làm mới token | 04 | POST /api/auth/refresh |

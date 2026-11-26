@@ -21,7 +21,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, REFERENCES
 SHOW GRANTS FOR 'lenglish_test'@'localhost';
 ```
 
-Không cấp quyền toàn server, không dùng root cho test, không cấp DROP. Tài khoản phải chỉ có quyền trên database này. Flyway tự tạo 8 bảng và bảng lịch sử khi chạy test; không chạy migration bằng tay trước lần nghiệm thu đầu tiên.
+Không cấp quyền toàn server, không dùng root cho test, không cấp DROP. Tài khoản phải chỉ có quyền trên database này. Flyway tự tạo 10 bảng nghiệp vụ (8 bảng gốc + `pending_registrations` + `password_reset_codes`) và bảng lịch sử khi chạy test; không chạy migration bằng tay trước lần nghiệm thu đầu tiên.
 
 ## 3. Chạy trong PowerShell
 
@@ -64,4 +64,4 @@ Nhập mật khẩu vào prompt, không gõ trực tiếp vào command history. 
 - Lỗi lấy public key khi xác thực: ưu tiên cấu hình TLS/server phù hợp, không tự thêm `allowPublicKeyRetrieval=true` hoặc tắt TLS đại trà; guard hiện cố ý không cho URL tùy ý.
 - Failsafe thất bại: xem báo cáo trong thư mục `target/failsafe-reports`; không coi `test` thành công là migration đã đạt.
 
-Đã có kết quả SQL thực tế trên MySQL local: `clean verify` đầy đủ đã đạt BUILD SUCCESS ở cả Phase 1 và Phase 2 (21 IT gồm `RepositoryLayerIT` 15 + `EnglishAppCdcnttApplicationIT` 6 schema/migration), lần gần nhất 2026-09-29 20:47 và đã chạy trên layout package chuẩn hóa của Đợt 6 — xem [TIEN_DO_TRIEN_KHAI.md](TIEN_DO_TRIEN_KHAI.md) Đợt 4–6. Việc còn lại của môi trường là kiểm chứng runtime JDK 21 (các lần nghiệm thu hiện dùng JDK 24 với compiler `release 21`).
+Đã có kết quả SQL thực tế trên MySQL local ở Phase 1 và Phase 2 (21 IT gồm `RepositoryLayerIT` 15 + `EnglishAppCdcnttApplicationIT` 6 schema/migration), lần gần nhất 2026-09-29 20:47 — xem [TIEN_DO_TRIEN_KHAI.md](TIEN_DO_TRIEN_KHAI.md) Đợt 4–6. Từ Đợt 16, bộ IT có thêm các luồng xác thực email/quên mật khẩu và schema V4 (tổng 66 test: `ApiEndToEndIT` 21, `RepositoryLayerIT` 15, `WordFlowIT` 9, `EnglishAppCdcnttApplicationIT` 6, `RefreshRotationIT` 5, `PhraseFlowIT` 4, `ReviewFlowIT` 3, `WordGenerateFlowIT` 3); `clean verify` đã đạt BUILD SUCCESS trên MySQL local ngày 2026-11-26. Việc còn lại của môi trường là kiểm chứng runtime JDK 21 (các lần nghiệm thu hiện dùng JDK 24 với compiler `release 21`).

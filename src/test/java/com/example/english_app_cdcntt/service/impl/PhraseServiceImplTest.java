@@ -1,5 +1,7 @@
 package com.example.english_app_cdcntt.service.impl;
 
+import com.example.english_app_cdcntt.support.TestUsers;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -73,7 +75,7 @@ class PhraseServiceImplTest {
     }
 
     private static User user(long id) {
-        User user = User.create("alice", "hash");
+        User user = TestUsers.create("alice", "alice", "hash");
         ReflectionTestUtils.setField(user, "id", id);
         return user;
     }
